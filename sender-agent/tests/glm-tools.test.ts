@@ -60,6 +60,24 @@ describe("GLM tool loop", () => {
     expect(repairBody.tools).toBeUndefined();
   });
 
+  it("forces a tool-free final JSON after the last allowed tool round", async () => {
+    process.env.ZHIPU_API_KEY = "test-key";
+    const toolMessage = (id: string) => jsonResponse({ choices: [{ message: { role: "assistant", content: "", tool_calls: [{ id, type: "function", function: { name: "read_test", arguments: "{}" } }] } }] });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(toolMessage("call-1"))
+      .mockResolvedValueOnce(toolMessage("call-2"))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { role: "assistant", content: JSON.stringify({ answer: "forced-final" }) } }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const execute = vi.fn(async () => ({ value: "enough-context" }));
+
+    await expect(chatJsonWithTools(z.object({ answer: z.string() }), "system", "user", [tool], execute, { maxRounds: 2 })).resolves.toEqual({ answer: "forced-final" });
+
+    expect(execute).toHaveBeenCalledTimes(2);
+    const forcedBody = JSON.parse(String(fetchMock.mock.calls[2][1]?.body));
+    expect(forcedBody.tools).toBeUndefined();
+    expect(forcedBody.messages.at(-1).content).toContain("工具阶段已经结束");
+  });
+
   it("rejects malformed tool arguments and tool-call overflow", async () => {
     process.env.ZHIPU_API_KEY = "test-key";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { role: "assistant", content: "", tool_calls: [{ id: "call-1", type: "function", function: { name: "read_test", arguments: "{" } }] } }] })));

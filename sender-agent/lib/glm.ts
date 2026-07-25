@@ -204,11 +204,30 @@ export async function chatJsonWithTools<T>(
   let toolCallCount = 0;
   let toolResultChars = 0;
 
+  const parseOrRepairFinal = async (content: string | null | undefined) => {
+    if (!content) throw new GlmError("智谱服务未返回自动填写结果。", 502);
+    try {
+      return schema.parse(parseJsonContent(content));
+    } catch (error) {
+      messages.push({ role: "assistant", content });
+      messages.push({
+        role: "user",
+        content: `上一条 JSON 未通过结构校验：${(error as Error).message.slice(0, 1200)}。只修复字段、类型和 JSON 语法，不要增加新事实，也不要再次调用工具。`,
+      });
+      const repaired = await requestToolChat(messages, undefined, maxTokens, false, "none");
+      if (!repaired.content) throw new GlmError("智谱服务未返回修复后的自动填写结果。", 502);
+      try {
+        return schema.parse(parseJsonContent(repaired.content));
+      } catch (repairError) {
+        throw new GlmError(`模型输出未通过结构校验：${(repairError as Error).message}`, 502);
+      }
+    }
+  };
+
   for (let round = 0; round < maxRounds; round += 1) {
     const message = await requestToolChat(messages, tools, maxTokens, thinking, reasoningEffort);
     const toolCalls = message.tool_calls || [];
     if (toolCalls.length) {
-      if (round === maxRounds - 1) throw new GlmError("AI 工具调用轮次超过限制，请缩小资料范围后重试。", 502);
       messages.push({ role: "assistant", content: message.content || "", reasoning_content: message.reasoning_content || "", tool_calls: toolCalls });
       for (const toolCall of toolCalls) {
         toolCallCount += 1;
@@ -226,27 +245,18 @@ export async function chatJsonWithTools<T>(
         if (toolResultChars > maxToolResultChars) throw new GlmError("AI 工具返回内容超过安全限制，请减少检索范围。", 502);
         messages.push({ role: "tool", tool_call_id: toolCall.id, content });
       }
+      if (round === maxRounds - 1) {
+        messages.push({
+          role: "user",
+          content: "工具阶段已经结束。不得请求或假设任何新资料；请仅依据当前对话中的工具结果，立即返回符合要求的最终 JSON 对象。",
+        });
+        const forcedFinal = await requestToolChat(messages, undefined, maxTokens, false, "none");
+        return parseOrRepairFinal(forcedFinal.content);
+      }
       continue;
     }
 
-    const content = message.content;
-    if (!content) throw new GlmError("智谱服务未返回自动填写结果。", 502);
-    try {
-      return schema.parse(JSON.parse(content));
-    } catch (error) {
-      messages.push({ role: "assistant", content });
-      messages.push({
-        role: "user",
-        content: `上一条 JSON 未通过结构校验：${(error as Error).message.slice(0, 1200)}。只修复字段、类型和 JSON 语法，不要增加新事实，也不要再次调用工具。`,
-      });
-      const repaired = await requestToolChat(messages, undefined, maxTokens, false, "none");
-      if (!repaired.content) throw new GlmError("智谱服务未返回修复后的自动填写结果。", 502);
-      try {
-        return schema.parse(JSON.parse(repaired.content));
-      } catch (repairError) {
-        throw new GlmError(`模型输出未通过结构校验：${(repairError as Error).message}`, 502);
-      }
-    }
+    return parseOrRepairFinal(message.content);
   }
   throw new GlmError("AI 未在限定轮次内返回自动填写结果。", 502);
 }
