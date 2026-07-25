@@ -315,7 +315,17 @@ export async function publishCharacterRelease(regionId: string, taskId: string, 
     }
     const publishedAt = now();
     const deliveryId = id("delivery");
-    const remote = await publishPetPolicy({ policyVersion: deliveryId, publishedAt, rolloutPercent: percent, region, task });
+    const remote = await publishPetPolicy({
+      policyVersion: deliveryId,
+      publishedAt,
+      rolloutPercent: percent,
+      // A console publish is an explicit dispatch command. The selected cohort
+      // should receive this batch even if a previous proactive message used the
+      // normal cadence allowance; consent, pause and quiet-time guards remain.
+      frequencyBypass: true,
+      region,
+      task,
+    });
     const release: CharacterPlanRelease = {
       id: id("release"), deliveryId, regionId, taskId, rolloutPercent: percent, exampleMode,
       checksum: remote.checksum, status: "published", publishedAt, channel: "cloudflare_kv",

@@ -12,6 +12,7 @@ function policy(version = "policy-1") {
     policyVersion: version,
     publishedAt: "2026-07-25T00:00:00.000Z",
     rolloutPercent: 100,
+    delivery: { messageMode: "casual_check_in", frequencyBypass: true },
     region: { id: "region-jp", code: "JP", name: "日本", language: "ja-JP", timeZone: "Asia/Tokyo", quietHours: { start: "22:00", end: "08:00" } },
     plan: { id: "task-1", title: "日本策略", objective: "launch", theme: "同行", narrative: "自然表达", timeWindow: "T-3", facts: [] },
     systemPrompt: "使用自然的日语区域表达，并尊重玩家拒绝。",

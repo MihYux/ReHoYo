@@ -9,6 +9,10 @@ type PetPolicy = {
   policyVersion: string;
   publishedAt: string;
   rolloutPercent: number;
+  delivery: {
+    messageMode: "casual_check_in";
+    frequencyBypass: boolean;
+  };
   region: {
     id: string;
     code: string;
@@ -91,11 +95,19 @@ function normalizePolicy(value: unknown): Omit<PetPolicy, "checksum"> {
   if (!Number.isInteger(rolloutPercent) || rolloutPercent < 1 || rolloutPercent > 100) throw new Error("rolloutPercent must be 1-100");
   const facts = Array.isArray(plan.facts) ? plan.facts.map(fact) : [];
   if (facts.length > 30) throw new Error("plan.facts exceeds 30 items");
+  const delivery = input.delivery as Record<string, unknown> | undefined;
+  if (!delivery || delivery.messageMode !== "casual_check_in" || typeof delivery.frequencyBypass !== "boolean") {
+    throw new Error("delivery is invalid");
+  }
   return {
     schemaVersion: 1,
     policyVersion: stringField(input.policyVersion, "policyVersion", 160),
     publishedAt: stringField(input.publishedAt, "publishedAt", 64),
     rolloutPercent,
+    delivery: {
+      messageMode: "casual_check_in",
+      frequencyBypass: delivery.frequencyBypass,
+    },
     region: {
       id: stringField(region.id, "region.id", 160),
       code: regionCode(region.code),
@@ -125,12 +137,23 @@ async function sha256(value: string) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function constantTimeEqual(left: string, right: string) {
+  const leftBytes = textEncoder.encode(left);
+  const rightBytes = textEncoder.encode(right);
+  if (leftBytes.length !== rightBytes.length) return false;
+  let difference = 0;
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    difference |= leftBytes[index] ^ rightBytes[index];
+  }
+  return difference === 0;
+}
+
 async function authorized(request: Request, secret: string | undefined) {
   if (!secret) return false;
   const header = request.headers.get("authorization") || "";
   const supplied = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   const [expectedHash, suppliedHash] = await Promise.all([sha256(secret), sha256(supplied)]);
-  return crypto.subtle.timingSafeEqual(textEncoder.encode(expectedHash), textEncoder.encode(suppliedHash));
+  return constantTimeEqual(expectedHash, suppliedHash);
 }
 
 function keyForRegion(code: string) {

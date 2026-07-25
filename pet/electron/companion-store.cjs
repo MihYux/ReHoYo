@@ -184,7 +184,18 @@ function normalizeRegionalReleaseInput(input) {
   if (!contentValidation.valid) {
     throw new Error(`Regional release contains internal metadata: ${contentValidation.errors.map((item) => `${item.field}:${item.reason}`).join(",")}`);
   }
-  return { sourceId, taskId, regionId, rolloutPercent, exampleMode: input.exampleMode === true, plan };
+  const messageMode = input.messageMode === "casual_check_in"
+    ? "casual_check_in"
+    : "release_context";
+  return {
+    sourceId,
+    taskId,
+    regionId,
+    rolloutPercent,
+    messageMode,
+    frequencyBypass: input.frequencyBypass === true || input.exampleMode === true,
+    plan,
+  };
 }
 
 function authorizedReleaseMemory(data) {
@@ -194,7 +205,23 @@ function authorizedReleaseMemory(data) {
     item.reusableByCharacter === true && item.campaignReusable === true) || null;
 }
 
-function buildRegionalReleaseCandidate(data, plan) {
+function buildRegionalReleaseCandidate(data, plan, messageMode = "release_context", sourceId = "") {
+  if (messageMode === "casual_check_in") {
+    const openers = [
+      "开拓者，今天过得怎么样？咱刚好想来陪你聊两句。想说点什么都可以，不想聊也没关系。",
+      "开拓者，忙完了吗？咱来看看你。今天有没有什么想和咱分享的小事？",
+      "开拓者，咱来打个招呼！今天过得还顺利吗？有空就随便聊两句吧。",
+      "开拓者，现在心情怎么样？咱正好在这儿，想聊天的话就和我说说吧。",
+    ];
+    const index = Number.parseInt(
+      createHash("sha256")
+        .update(`${sourceId}:${data.profile.id}:casual-check-in`)
+        .digest("hex")
+        .slice(0, 8),
+      16,
+    ) % openers.length;
+    return { memory: null, body: openers[index] };
+  }
   const materials = [
     ...(Array.isArray(plan.facts) ? plan.facts.map((fact) => fact.value) : []),
     plan.theme,
@@ -3261,7 +3288,12 @@ class CompanionStore {
 
   prepareRegionalReleaseMessage(input) {
     const normalized = normalizeRegionalReleaseInput(input);
-    const candidate = buildRegionalReleaseCandidate(this.data, normalized.plan);
+    const candidate = buildRegionalReleaseCandidate(
+      this.data,
+      normalized.plan,
+      normalized.messageMode,
+      normalized.sourceId,
+    );
     return clone({
       text: candidate.body,
       plan: normalized.plan,
@@ -3269,14 +3301,23 @@ class CompanionStore {
         region: input.region || {},
         memoryUsed: Boolean(candidate.memory),
         contactAllowed: true,
+        messageMode: normalized.messageMode,
       },
     });
   }
 
   receiveRegionalReleasePlan(input, providedPreflight) {
-    const { sourceId, taskId, regionId, rolloutPercent, exampleMode, plan } = normalizeRegionalReleaseInput(input);
-    const candidate = buildRegionalReleaseCandidate(this.data, plan);
-    const local = localReleaseMessageReview({ text: candidate.body, plan, contactAllowed: true });
+    const {
+      sourceId,
+      taskId,
+      regionId,
+      rolloutPercent,
+      messageMode,
+      frequencyBypass,
+      plan,
+    } = normalizeRegionalReleaseInput(input);
+    const candidate = buildRegionalReleaseCandidate(this.data, plan, messageMode, sourceId);
+    const local = localReleaseMessageReview({ text: candidate.body, plan, contactAllowed: true, messageMode });
     const preflight = providedPreflight || {
       decision: local.passed ? "execute" : "skip",
       dimensions: local.dimensions,
@@ -3304,7 +3345,7 @@ class CompanionStore {
       );
       const event = {
         id: eventId,
-        trigger: "version_launch",
+        trigger: messageMode === "casual_check_in" ? "scheduled_daily" : "version_launch",
         playerId: data.profile.id,
         characterId: data.skill.characterId,
         scheduledAt: data.demoNow,
@@ -3315,9 +3356,9 @@ class CompanionStore {
           regionId,
           rolloutPercent,
           rolloutSelected,
-          exampleMode,
-          exampleFrequencyBypass: exampleMode,
-          contentType: "version_launch",
+          messageMode,
+          manualDispatchFrequencyBypass: frequencyBypass,
+          contentType: messageMode === "casual_check_in" ? "daily" : "version_launch",
           templateId: `regional-plan-${sourceId}`.slice(0, 160),
           ...(rolloutSelected ? { releasePlan: plan } : {}),
         },
@@ -3349,7 +3390,7 @@ class CompanionStore {
         actor: "system",
         entityType: "event",
         entityId: eventId,
-        metadata: { sourceId, taskId, regionId, rolloutPercent, exampleMode },
+        metadata: { sourceId, taskId, regionId, rolloutPercent, messageMode, frequencyBypass },
       });
 
       const contactDecision = evaluateContactPolicy({
@@ -3423,8 +3464,8 @@ class CompanionStore {
         id: messageId,
         characterId: data.skill.characterId,
         playerId: data.profile.id,
-        type: "version_launch",
-        title: "咱发现了一段新旅程",
+        type: messageMode === "casual_check_in" ? "daily" : "version_launch",
+        title: messageMode === "casual_check_in" ? "来聊两句吧" : "咱发现了一段新旅程",
         body,
         createdAt: data.demoNow,
         eventId,
@@ -3433,9 +3474,9 @@ class CompanionStore {
           reviewer: "区域发行控制台",
           decision: "approved",
           reviewedAt: data.demoNow,
-          note: exampleMode
-            ? "示例发布：仅绕过主动触达频控，其余关系与安全护栏保持有效。"
-            : "区域方案发布后由共生式角色按关系护栏自然执行。",
+          note: frequencyBypass
+            ? "控制台全量问候：仅绕过主动触达频控，其余关系与安全护栏保持有效。"
+            : "区域在线指南发布后由桌宠按关系护栏自然问候。",
         },
         trace: {
           skillVersion: data.skill.skillVersion,
@@ -3443,9 +3484,11 @@ class CompanionStore {
           ruleIds: [
             "release.regional_plan_received",
             "release.gray_rollout_selected",
-            ...(exampleMode ? ["release.example_frequency_bypass"] : []),
+            ...(frequencyBypass ? ["release.manual_dispatch_frequency_bypass"] : []),
             "memory.authorized_reference",
-            "relationship.soft_version_invitation",
+            messageMode === "casual_check_in"
+              ? "relationship.casual_online_guide"
+              : "relationship.soft_version_invitation",
             "safety.contact_policy_before_generation",
           ],
           fixedFactIds: plan.facts.map((fact) => fact.id),
@@ -3469,18 +3512,24 @@ class CompanionStore {
         favorite: false,
         liked: false,
         remindLater: false,
-        action: {
-          label: "有空再看看",
-          kind: "open_version_demo",
-          targetId: `product://campaign/${taskId}`,
-        },
+        ...(messageMode === "casual_check_in"
+          ? {}
+          : {
+              action: {
+                label: "有空再看看",
+                kind: "open_version_demo",
+                targetId: `product://campaign/${taskId}`,
+              },
+            }),
       });
       event.status = "executed";
       this.#appendLog(data, {
         occurredAt: now,
         category: "delivery",
         action: "regional_plan_proactive_chat_started",
-        summary: "三月七结合授权记忆，以低打扰方式主动发起了版本话题。",
+        summary: messageMode === "casual_check_in"
+          ? "三月七按照在线指南，以低打扰方式主动发起了日常问候。"
+          : "三月七结合授权记忆，以低打扰方式主动发起了版本话题。",
         actor: "character",
         entityType: "message",
         entityId: messageId,

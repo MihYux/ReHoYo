@@ -133,8 +133,8 @@ function evaluateContactPolicy({ data, event, now }) {
     "recall",
   ]);
   const bypassFrequencyLimits =
-    versionTypes.has(contentType) &&
-    event?.payload?.exampleFrequencyBypass === true;
+    event?.payload?.manualDispatchFrequencyBypass === true ||
+    (versionTypes.has(contentType) && event?.payload?.exampleFrequencyBypass === true);
   const playerContext = event?.payload?.playerContext;
   if (
     versionTypes.has(contentType) &&
@@ -323,7 +323,12 @@ function evaluateContactPolicy({ data, event, now }) {
       weeklyUsed: weeklyMessages.length,
       weeklyLimit: data.profile.weeklyContactLimit,
       ...(bypassFrequencyLimits
-        ? { exampleFrequencyBypass: true }
+        ? {
+            frequencyBypass: true,
+            ...(event?.payload?.exampleFrequencyBypass === true
+              ? { exampleFrequencyBypass: true }
+              : {}),
+          }
         : {}),
     },
   };

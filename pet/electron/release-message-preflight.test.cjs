@@ -13,6 +13,15 @@ test("local rules block machine metadata but allow normal dates", () => {
   assert.equal(localReleaseMessageReview({ text: "生成时间：2026-07-25T05:50:02.907Z", plan: plan() }).passed, false);
   assert.equal(localReleaseMessageReview({ text: "新版本将在 2026 年 7 月 30 日和你见面，有空再来看吧。", plan: plan() }).passed, true);
 });
+test("casual check-ins can pass without release facts when they make no release claim", () => {
+  const casualPlan = { title: "区域指南", theme: "自然陪伴", narrative: "轻松问候", timeWindow: "", facts: [] };
+  const result = localReleaseMessageReview({
+    text: "开拓者，今天过得怎么样？想聊点什么都可以，不想聊也没关系。",
+    plan: casualPlan,
+    messageMode: "casual_check_in",
+  });
+  assert.equal(result.passed, true);
+});
 test("local rules reject an operator objective mechanically interpolated into dialogue", () => {
   const result = localReleaseMessageReview({
     text: "最近列车上多了件和“由三月七以同行者视角介绍黑天鹅，激发玩家对匹诺康尼的兴趣。”有关的新鲜事。",

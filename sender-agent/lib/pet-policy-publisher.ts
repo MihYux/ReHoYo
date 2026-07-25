@@ -37,6 +37,7 @@ export async function publishPetPolicy(input: {
   policyVersion: string;
   publishedAt: string;
   rolloutPercent: number;
+  frequencyBypass: boolean;
   region: CharacterReleaseRegion;
   task: CharacterReleaseTask;
 }) {
@@ -50,6 +51,10 @@ export async function publishPetPolicy(input: {
       policyVersion: input.policyVersion,
       publishedAt: input.publishedAt,
       rolloutPercent: input.rolloutPercent,
+      delivery: {
+        messageMode: "casual_check_in",
+        frequencyBypass: input.frequencyBypass,
+      },
       region: {
         id: input.region.id,
         code: input.region.code,

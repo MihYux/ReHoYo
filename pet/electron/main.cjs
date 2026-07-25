@@ -428,7 +428,8 @@ async function applyRemotePolicy(policy, state) {
     region: policy.region,
     plan: policy.plan,
     source: null,
-    exampleMode: false,
+    messageMode: policy.delivery?.messageMode || "casual_check_in",
+    frequencyBypass: policy.delivery?.frequencyBypass === true,
   };
   const prepared = companionStore.prepareRegionalReleaseMessage(deliveryInput);
   const preflight = await reviewReleaseMessage(prepared);

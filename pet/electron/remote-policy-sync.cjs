@@ -50,7 +50,7 @@ class RemotePolicySync {
     getRegionCode,
     onPolicy,
     baseUrl = DEFAULT_POLICY_URL,
-    intervalMs = 15 * 60 * 1000,
+    intervalMs = 60 * 1000,
     fetchImpl = globalThis.fetch,
   }) {
     if (!cachePath || typeof getRegionCode !== "function" || typeof onPolicy !== "function" || typeof fetchImpl !== "function") throw new Error("Remote policy sync is not configured.");
@@ -58,7 +58,7 @@ class RemotePolicySync {
     this.getRegionCode = getRegionCode;
     this.onPolicy = onPolicy;
     this.baseUrl = String(baseUrl).replace(/\/$/, "");
-    this.intervalMs = Math.max(60_000, Number(intervalMs) || 15 * 60 * 1000);
+    this.intervalMs = Math.max(60_000, Number(intervalMs) || 60 * 1000);
     this.fetchImpl = fetchImpl;
     this.timer = undefined;
     this.syncing = false;
