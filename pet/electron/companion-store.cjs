@@ -194,6 +194,7 @@ function normalizeRegionalReleaseInput(input) {
     rolloutPercent,
     messageMode,
     frequencyBypass: input.frequencyBypass === true || input.exampleMode === true,
+    memoryIds: asStringArray(input.memoryIds, [], 5),
     plan,
   };
 }
@@ -1424,6 +1425,39 @@ class CompanionStore {
             Date.parse(left.memory.createdAt),
       )
       .slice(0, Math.max(0, Math.min(3, limit)))
+      .map(({ memory }) => clone(memory));
+  }
+
+  getCampaignReleaseMemories(query = "", limit = 5) {
+    if (
+      this.data.profile.memoryEnabled !== true ||
+      this.data.relationship.memoryEnabled !== true ||
+      this.data.profile.personalizationEnabled !== true
+    ) {
+      return [];
+    }
+    const terms = String(query)
+      .toLowerCase()
+      .split(/[\s，。！？、；：,.!?;:]+/)
+      .filter((term) => term.length >= 2);
+    return this.data.memories
+      .filter(
+        (memory) =>
+          memory.status === "confirmed" &&
+          memory.userConfirmed === true &&
+          memory.reusableByCharacter === true &&
+          memory.campaignReusable === true &&
+          !memory.supersededBy,
+      )
+      .map((memory) => ({
+        memory,
+        score: terms.reduce(
+          (score, term) => score + (`${memory.title} ${memory.summary} ${(memory.tags ?? []).join(" ")}`.toLowerCase().includes(term) ? 1 : 0),
+          0,
+        ),
+      }))
+      .sort((left, right) => right.score - left.score || Date.parse(right.memory.createdAt) - Date.parse(left.memory.createdAt))
+      .slice(0, Math.max(0, Math.min(5, Number(limit) || 5)))
       .map(({ memory }) => clone(memory));
   }
 
@@ -3328,6 +3362,28 @@ class CompanionStore {
     });
   }
 
+  previewRegionalReleaseContact(input) {
+    const normalized = normalizeRegionalReleaseInput(input);
+    const rolloutSelected = isPlayerInRollout(
+      this.data.profile.id,
+      `regional-plan:${normalized.sourceId}`,
+      normalized.rolloutPercent,
+    );
+    if (!rolloutSelected) return { allowed: false, reason: "gray_rollout_not_selected" };
+    return evaluateContactPolicy({
+      data: this.data,
+      event: {
+        trigger: normalized.messageMode === "casual_check_in" ? "scheduled_daily" : "version_launch",
+        payload: {
+          contentType: normalized.messageMode === "casual_check_in" ? "daily" : "version_launch",
+          manualDispatchFrequencyBypass: normalized.frequencyBypass,
+          templateId: `regional-plan-${normalized.sourceId}`.slice(0, 160),
+        },
+      },
+      now: this.data.demoNow,
+    });
+  }
+
   receiveRegionalReleasePlan(input, providedPreflight) {
     const {
       sourceId,
@@ -3336,6 +3392,7 @@ class CompanionStore {
       rolloutPercent,
       messageMode,
       frequencyBypass,
+      memoryIds,
       plan,
     } = normalizeRegionalReleaseInput(input);
     const candidate = buildRegionalReleaseCandidate(this.data, plan, messageMode, sourceId);
@@ -3441,7 +3498,6 @@ class CompanionStore {
         return;
       }
 
-      const memory = null;
       if (preflight.decision !== "execute" || !preflight.finalText) {
         event.status = "suppressed";
         event.suppressionReason = "release_preflight_failed";
@@ -3515,7 +3571,7 @@ class CompanionStore {
           ],
           fixedFactIds: plan.facts.map((fact) => fact.id),
           knowledgeChunkIds: [],
-          memoryIds: memory ? [memory.id] : [],
+          memoryIds,
            generatedAt: data.demoNow,
           preflight: {
             decision: preflight.decision,
@@ -3559,7 +3615,7 @@ class CompanionStore {
           sourceId,
           taskId,
           regionId,
-          memoryId: memory?.id ?? "",
+          memoryId: memoryIds[0] ?? "",
         },
       });
     });

@@ -34,6 +34,8 @@ const { CompanionStore } = require("./companion-store.cjs");
 const { ReleaseSkillLoader } = require("./release-skill-loader.cjs");
 const { RemotePolicySync, profileRegionCode } = require("./remote-policy-sync.cjs");
 const { RemoteCommandSync } = require("./remote-command-sync.cjs");
+const { RealtimeReleaseSync } = require("./realtime-release-sync.cjs");
+const { generateReleaseOpening, safeFallback } = require("./release-dialogue.cjs");
 const {
   SAFE_NON_RELEASE_TEXT,
   runReleaseMessagePreflight,
@@ -82,6 +84,7 @@ function currentSize() {
 let releaseSkillLoader;
 let remotePolicySync;
 let remoteCommandSync;
+let realtimeReleaseSync;
 let activeRemotePolicy;
 let memoryRefinementTimer;
 let memoryRefinementRunning = false;
@@ -453,6 +456,83 @@ async function applyRemoteCommand(command, state) {
   notifyCompanionDataChanged(next);
   const nextRelease = latestRegionalReleaseMessage(next);
   if (nextRelease && nextRelease.id !== beforeReleaseId) showPetWindow();
+}
+
+async function applyRealtimeReleaseBatch(batch, state) {
+  companionStore.reloadFromDisk();
+  const before = companionStore.getSnapshot();
+  const code = profileRegionCode(before.profile);
+  const policy = batch.regions?.[code];
+  if (!policy) return { stage: "failed", reasonCode: "region_policy_missing" };
+  activeRemotePolicy = policy;
+  if (!state?.shouldDeliver) {
+    return { stage: "suppressed", reasonCode: state?.expired ? "release_batch_expired" : "already_processed" };
+  }
+  const sourceId = `global-release:${batch.batchId}`.slice(0, 160);
+  const memoryQuery = [policy.plan.title, policy.plan.theme, ...policy.plan.facts.map((fact) => fact.value)].join(" ");
+  const memories = companionStore.getCampaignReleaseMemories(memoryQuery, 5);
+  const deliveryInput = {
+    sourceId,
+    taskId: policy.plan.id,
+    regionId: policy.region.id,
+    rolloutPercent: 100,
+    region: policy.region,
+    plan: policy.plan,
+    source: null,
+    messageMode: "release_context",
+    frequencyBypass: true,
+    memoryIds: memories.map((memory) => memory.id),
+  };
+  const contact = companionStore.previewRegionalReleaseContact(deliveryInput);
+  if (!contact.allowed) {
+    const next = companionStore.receiveRegionalReleasePlan(deliveryInput, {
+      decision: "execute",
+      dimensions: {},
+      reasonCodes: [],
+      rewriteCount: 0,
+      reviewMode: "contact_guard",
+      finalText: safeFallback(policy.plan),
+      model: "local-rules",
+      degraded: true,
+    });
+    notifyCompanionDataChanged(next);
+    return { stage: "suppressed", reasonCode: contact.reason || "contact_not_allowed" };
+  }
+  const settings = aiSettingsStore.getPublicSettings();
+  let generated = await generateReleaseOpening({
+    policy,
+    memories,
+    apiKey: settings.hasApiKey ? aiSettingsStore.getApiKey() : "",
+    model: settings.model,
+    basePrompt: promptConfig.systemPrompt,
+    skillPrompt: releaseSkillLoader.getPrompt(),
+    requestChat: requestDeepSeekChat,
+    authorize: (characters) => serviceBudgetStore.authorize("deepseek", { characters }),
+    recordSuccess: () => serviceBudgetStore.recordSuccess("deepseek"),
+    recordFailure: (codeValue) => serviceBudgetStore.recordFailure("deepseek", codeValue),
+  });
+  let preflight = await reviewReleaseMessage({
+    text: generated.text,
+    plan: policy.plan,
+    context: { region: policy.region, contactAllowed: true, memoryUsed: memories.length > 0, messageMode: "release_context" },
+  });
+  if (preflight.decision !== "execute" && generated.source === "model") {
+    generated = { text: safeFallback(policy.plan), source: "fallback", model: "local-rules", degraded: true, reasonCode: "model_preflight_failed" };
+    preflight = await reviewReleaseMessage({
+      text: generated.text,
+      plan: policy.plan,
+      context: { region: policy.region, contactAllowed: true, memoryUsed: false, messageMode: "release_context" },
+    });
+  }
+  const next = companionStore.receiveRegionalReleasePlan(deliveryInput, preflight);
+  notifyCompanionDataChanged(next);
+  const event = next.events.find((item) => item.payload?.sourceId === sourceId);
+  if (event?.status === "executed") {
+    showPetWindow();
+    return { stage: generated.degraded ? "degraded" : "generated", reasonCode: generated.reasonCode || "" };
+  }
+  if (event?.status === "suppressed") return { stage: "suppressed", reasonCode: event.suppressionReason || "release_suppressed" };
+  return { stage: "failed", reasonCode: "release_event_missing" };
 }
 
 function registerServiceHandlers() {
@@ -1750,8 +1830,14 @@ app.whenReady().then(() => {
     cachePath: path.join(app.getPath("userData"), "global-command-cache.json"),
     onCommand: applyRemoteCommand,
   });
+  realtimeReleaseSync = new RealtimeReleaseSync({
+    cachePath: path.join(app.getPath("userData"), "realtime-release-cache.json"),
+    getProfile: () => companionStore.getSnapshot().profile,
+    onBatch: applyRealtimeReleaseBatch,
+  });
   remotePolicySync.start();
   remoteCommandSync.start();
+  realtimeReleaseSync.start();
   registerAiHandlers();
   registerCompanionHandlers();
   registerServiceHandlers();
@@ -1781,6 +1867,7 @@ app.on("before-quit", () => {
   releaseSkillLoader?.close();
   remotePolicySync?.close();
   remoteCommandSync?.close();
+  realtimeReleaseSync?.close();
   if (windowStateStore) {
     persistWindowState();
   }
