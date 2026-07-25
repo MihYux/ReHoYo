@@ -1,8 +1,34 @@
-# ReHoYo 全球发行智能工作台
+<p align="center">
+  <img src="./assests/rehoyo-logo.png" alt="ReHoYo Logo" width="520" />
+</p>
+
+<h1 align="center">ReHoYo 全球发行智能工作台</h1>
 
 ReHoYo 是面向游戏全球发行团队的本地工作台。它将版本理解、区域研究、全球发行方案、角色共生方案、策略导出和三月七桌宠执行整合在同一个仓库中。
 
 仓库地址：[MihYux/ReHoYo](https://github.com/MihYux/ReHoYo)
+
+> [!NOTE]
+> ReHoYo 是本地优先的发行决策与角色共生实验工作台。当前版本不会直接连接真实广告投放、支付、社交平台或外部发布渠道。
+
+## 产品预览
+
+### 全球发行工作台
+
+从同一个桌面窗口完成版本理解、区域判断、发行方案、策略导出与角色发行。区域判断页会同时呈现结构化结论、区域差异与可追溯证据来源。
+
+![ReHoYo 区域判断工作台](./assests/readme-workbench-region.png)
+
+### 三月七真实对话
+
+以下对话使用桌宠当前保存的 DeepSeek 配置和正式三月七角色提示词实时生成，并经过本地输出检查。截图和仓库文件不包含 API Key。
+
+| 匹诺康尼 | 黑天鹅 |
+| --- | --- |
+| ![三月七谈匹诺康尼](./assests/readme-chat-penacony.png) | ![三月七谈黑天鹅](./assests/readme-chat-black-swan.png) |
+
+> [!TIP]
+> 如需使用当前桌宠配置重新生成两张真实对话截图，运行 `npm run capture:readme-chats`。该命令不会把密钥写入图片、标准输出或仓库文件。
 
 ## 产品流程
 
@@ -30,6 +56,19 @@ ReHoYo/
 ```
 
 根目录是唯一的 ReHoYo 应用，不再使用 `ReHoYo2/`。`desktop-march7th/` 是同仓库内独立启动的桌宠应用；ReHoYo 不会自动拉起桌宠。
+
+## 技术栈
+
+| 层级 | 技术 |
+| --- | --- |
+| Web 工作台 | Next.js 16、React 19、TypeScript、CSS Modules |
+| 桌面运行时 | Electron 43；桌宠渲染层使用 Vite 8 |
+| 数据与校验 | Drizzle ORM、libSQL / SQLite、Zod |
+| 交互与视觉 | Phosphor Icons、Motion、D3 Force、React Force Graph |
+| 文档处理 | Mammoth、PDF Parse、Read Excel File、Markdown / ZIP 导出 |
+| AI 能力 | 智谱 GLM（工作台生成与研究）、DeepSeek（三月七对话与发送前语义评审） |
+| 测试与质量 | Vitest、Node.js Test Runner、Playwright、Testing Library、ESLint |
+| 工程与打包 | npm、Concurrently、electron-builder |
 
 ## 快速开始
 
@@ -78,6 +117,9 @@ npm run dev:all
 
 桌宠的 DeepSeek API Key 可在桌宠设置中保存；也可以使用 `DEEPSEEK_API_KEY` 环境变量覆盖应用内配置。
 
+> [!TIP]
+> 只开发工作台时使用 `npm run dev:web`；需要同时验证角色发行桥接与桌宠消费时使用 `npm run dev:all`。
+
 ## 角色共生发行链路
 
 ### 从最终方案导入
@@ -111,22 +153,6 @@ npm run dev:all
 系统禁止把完整目标机械套入“和……有关的新鲜事”等模板。首次语义评审失败时最多改写一次，改写后重新执行全部检查；第二次仍不合格则不发送。DeepSeek 不可用时只允许通过本地硬规则的内容继续执行。找不到具体、安全且有价值的版本事实时，任务保持沉默，不发送通用发行兜底句。
 
 最终提交前还会重新检查玩家授权、暂停状态、勿扰时间、拒绝信号、退订状态和频率限制。自检结果仅写入内部 trace 与审计；玩家只看到最终自然语言。历史污染消息不会物理删除，但玩家快照会替换为安全的非发行文案。
-
-## 真实对话截图
-
-以下内容使用桌宠当前保存的 DeepSeek 配置和正式三月七角色提示词实时生成，并经过本地输出检查。截图和仓库文件不包含 API Key。
-
-![三月七谈匹诺康尼](./assests/readme-chat-penacony.png)
-
-![三月七谈黑天鹅](./assests/readme-chat-black-swan.png)
-
-如需使用当前桌宠配置重新生成截图：
-
-```powershell
-npm run capture:readme-chats
-```
-
-该命令只读取 Electron 安全存储中的密钥用于请求，不会把密钥写入图片、标准输出或仓库文件。
 
 ## 跨应用桥接
 
@@ -222,6 +248,9 @@ npm --prefix desktop-march7th run audit:release
 - `POST /api/character-release/regions/active`
 
 ## 安全与产品边界
+
+> [!WARNING]
+> 请勿提交 `.env`、Electron 安全存储、`.data/`、桥接队列或任何真实 API Key。README 截图只能包含可公开展示的界面与对话内容。
 
 - ReHoYo 生成本地交付包，不直接连接真实投放、社交平台、KOL、支付或外部发布渠道。
 - 桌宠独立决定执行、延迟或放弃发行消息，控制台不能绕过玩家授权和联系策略。
