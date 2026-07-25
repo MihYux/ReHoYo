@@ -42,5 +42,6 @@ test("uses etag and applies only a changed policy version", async (context) => {
   current = policy("policy-2");
   assert.equal((await sync.sync()).status, "updated");
   assert.deepEqual(applied, ["policy-1", "policy-2"]);
+  assert.equal(requests[1].headers["cache-control"], "no-cache");
   assert.equal(requests[1].headers["if-none-match"], `"${policy().checksum}"`);
 });

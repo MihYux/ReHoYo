@@ -13,7 +13,7 @@ npx wrangler secret put PUBLISH_TOKEN
 npm run deploy
 ```
 
-`wrangler.jsonc` binds the `PET_POLICIES` KV namespace and routes the Worker to `rehoyo.ccwu.cc`. Static assets are built from `showcase/` into the ignored `showcase/dist/` directory.
+`wrangler.jsonc` binds the `PET_POLICIES` KV namespace and installs a zone Worker Route for `rehoyo.ccwu.cc/*`. Static assets are built from `showcase/` into the ignored `showcase/dist/` directory.
 
 ## API
 

@@ -116,7 +116,10 @@ class RemotePolicySync {
     try {
       const regionCode = normalizeRegionCode(this.getRegionCode());
       const sameRegion = this.cache?.regionCode === regionCode;
-      const headers = { accept: "application/json" };
+      const headers = {
+        accept: "application/json",
+        "cache-control": "no-cache",
+      };
       if (sameRegion && this.cache?.etag) headers["if-none-match"] = this.cache.etag;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 20_000);

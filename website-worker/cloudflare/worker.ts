@@ -46,7 +46,9 @@ function json(value: unknown, init: ResponseInit = {}) {
 function publicHeaders(etag: string) {
   return {
     "access-control-allow-origin": "*",
-    "cache-control": "public, max-age=60, stale-while-revalidate=300",
+    // Keep the payload in KV's edge cache, but revalidate HTTP clients so their
+    // If-None-Match header reliably reaches the Worker and can return 304.
+    "cache-control": "public, no-cache",
     etag,
     "x-content-type-options": "nosniff",
   };

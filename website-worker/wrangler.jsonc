@@ -6,8 +6,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "routes": [
     {
-      "pattern": "rehoyo.ccwu.cc",
-      "custom_domain": true
+      "pattern": "rehoyo.ccwu.cc/*",
+      "zone_name": "rehoyo.ccwu.cc"
     }
   ],
   "assets": {

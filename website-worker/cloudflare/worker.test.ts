@@ -26,7 +26,7 @@ describe("pet policy worker", () => {
     const response = await worker.fetch(new Request("https://rehoyo.ccwu.cc/api/v1/pet-policy/jp"), environment(), {} as ExecutionContext);
     expect(response.status).toBe(200);
     expect(response.headers.get("etag")).toBe(`"${policy.checksum}"`);
-    expect(response.headers.get("cache-control")).toContain("max-age=60");
+    expect(response.headers.get("cache-control")).toBe("public, no-cache");
     await expect(response.json()).resolves.toMatchObject({ policyVersion: "policy-1" });
   });
 

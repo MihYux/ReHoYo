@@ -79,7 +79,7 @@ npx wrangler secret put PUBLISH_TOKEN
 npm run deploy
 ```
 
-The KV binding and custom-domain route are declared in `website-worker/wrangler.jsonc`. Never add the publishing token to `wrangler.jsonc`, `.dev.vars`, source files, or Git.
+The KV binding and `rehoyo.ccwu.cc/*` zone route are declared in `website-worker/wrangler.jsonc`. Never add the publishing token to `wrangler.jsonc`, `.dev.vars`, source files, or Git.
 
 API behavior:
 
