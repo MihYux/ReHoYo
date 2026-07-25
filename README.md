@@ -79,6 +79,8 @@ npx wrangler secret put PUBLISH_TOKEN
 npm run deploy
 ```
 
+The GitHub Worker deployment workflow is intentionally manual until the repository has `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` Actions secrets. Local deployments use Wrangler's authenticated profile.
+
 The KV binding and `rehoyo.ccwu.cc/*` zone route are declared in `website-worker/wrangler.jsonc`. Never add the publishing token to `wrangler.jsonc`, `.dev.vars`, source files, or Git.
 
 API behavior:

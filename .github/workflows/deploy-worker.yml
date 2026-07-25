@@ -1,12 +1,6 @@
 name: Deploy website Worker
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "website-worker/**"
-      - ".github/workflows/deploy-worker.yml"
   workflow_dispatch:
 
 permissions:
