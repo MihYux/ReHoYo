@@ -1,0 +1,6 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "rehoyo-ccwu",
+  "pages_build_output_dir": "./showcase/dist",
+  "compatibility_date": "2026-07-25"
+}

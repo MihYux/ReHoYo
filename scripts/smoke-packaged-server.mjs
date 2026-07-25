@@ -55,7 +55,12 @@ try {
   if (!response?.ok) {
     throw new Error(`Packaged server failed. exit=${child.exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`);
   }
-  console.log(`Packaged Electron Node server returned HTTP ${response.status}.`);
+  const apiResponse = await fetch(`http://127.0.0.1:${port}/api/project/current`);
+  if (!apiResponse.ok) {
+    const body = await apiResponse.text();
+    throw new Error(`Packaged API returned HTTP ${apiResponse.status}.\nbody:\n${body}\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+  }
+  console.log(`Packaged Electron server returned HTTP ${response.status}; project API returned HTTP ${apiResponse.status}.`);
 } finally {
   if (child.exitCode === null) child.kill();
 }
