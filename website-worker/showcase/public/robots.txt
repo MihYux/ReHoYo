@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rehoyo.ccwu.cc/sitemap.xml

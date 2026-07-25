@@ -1,0 +1,39 @@
+{
+  "name": "rehoyo-website-worker",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "ReHoYo public website and regional pet-policy API on Cloudflare Workers + KV.",
+  "scripts": {
+    "dev": "npm run build:site && npx wrangler dev",
+    "dev:site": "vite --config showcase/vite.config.ts",
+    "typecheck": "tsc -p showcase/tsconfig.json && tsc -p cloudflare/tsconfig.json",
+    "types": "npx wrangler types cloudflare/worker-configuration.d.ts",
+    "types:check": "npx wrangler types cloudflare/worker-configuration.d.ts --check",
+    "build:site": "tsc -p showcase/tsconfig.json && vite build --config showcase/vite.config.ts",
+    "build": "npm run build:site && npm run typecheck && npx wrangler deploy --dry-run",
+    "preview": "vite preview --config showcase/vite.config.ts",
+    "test": "vitest run --config cloudflare/vitest.config.ts",
+    "test:e2e": "playwright test --config showcase/playwright.config.ts",
+    "deploy": "npm run build:site && npx wrangler deploy"
+  },
+  "dependencies": {
+    "@fontsource-variable/noto-sans-sc": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260724.1",
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.114.0"
+  }
+}
