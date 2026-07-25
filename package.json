@@ -1,6 +1,6 @@
 {
   "name": "rehoyo-global-launch-workspace",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "main": "electron/main.mjs",
   "scripts": {
@@ -55,6 +55,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@emnapi/runtime": "^1.11.3",
     "@playwright/test": "^1.61.1",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
