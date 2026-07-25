@@ -149,7 +149,7 @@ export default function CharacterReleasePage() {
   return <div className={`page-enter ${styles.page}`}>
     <input ref={fileRef} className="sr-only" type="file" accept=".docx,.pdf,.md,.txt" onChange={(event) => event.target.files?.[0] && void importFile(event.target.files[0])} />
     <header className={styles.hero}>
-      <div><p className="page-kicker">Character symbiosis / Stage 05</p><h1>区域宠物策略发布台</h1><p>把已审核的单区域角色方案上传到 Cloudflare Worker；各地桌宠仅在策略版本更新时拉取并执行。</p></div>
+      <div><p className="page-kicker">Character symbiosis / Stage 05</p><h1>区域桌宠策略发布台</h1><p>把已审核的单区域角色方案上传到 Cloudflare Worker；各地桌宠仅在策略版本更新时拉取并执行。</p></div>
       <div className={styles.context}>
         <button onClick={() => setRegionPanel(true)}><Globe weight="duotone" /><span><small>当前区域</small><b>{region?.name || "加载中"}</b></span><ArrowRight /></button>
         <button className={workspace?.emergencyStoppedAt ? styles.resume : styles.emergency} disabled={!region || Boolean(busy)} onClick={() => region && mutate("emergency", () => call("/api/character-release/emergency", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ regionId: region.id, enabled: !workspace?.emergencyStoppedAt }) }), workspace?.emergencyStoppedAt ? "区域发行已恢复。" : "区域发行已紧急暂停。") }><Warning weight="fill" />{workspace?.emergencyStoppedAt ? "恢复区域" : "紧急暂停"}</button>

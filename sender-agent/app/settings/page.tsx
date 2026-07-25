@@ -76,7 +76,7 @@ export default function SettingsPage() {
         <label><span>策略服务</span><input value={settings?.delivery.serviceUrl || "https://rehoyo.ccwu.cc"} disabled /></label>
         <label><span>员工发布令牌</span><input type="password" autoComplete="off" value={publishToken} placeholder={settings?.delivery.configured ? "已保存；留空保持不变" : "粘贴 Worker 发布令牌"} onChange={(event) => { setPublishToken(event.target.value); setClearPublishToken(false); }} /></label>
         <label className={styles.clear}><input type="checkbox" checked={clearPublishToken} onChange={(event) => setClearPublishToken(event.target.checked)} /><span>清除已保存的发布令牌</span></label>
-        <p>只有人工确认后的区域宠物策略会上传；研究资料、引用、预算和内部目标不会进入公开 KV。</p>
+        <p>只有人工确认后的区域桌宠策略会上传；研究资料、引用、预算和内部目标不会进入公开 KV。</p>
       </section>
     </div>
     <div className={styles.actions}><button className="button button-primary" onClick={() => void save()} disabled={busy}><FloppyDisk size={17} />{busy ? "保存中…" : "保存连接设置"}</button></div>
