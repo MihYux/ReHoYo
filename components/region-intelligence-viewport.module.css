@@ -1,0 +1,39 @@
+.viewport { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; }
+.instrumentBar { min-height: 74px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: #fff; }
+.instrumentBar > div:first-child { display: flex; flex-direction: column; gap: 6px; }
+.instrumentBar span { color: var(--cyan-deep); font-size: 9px; letter-spacing: .1em; }
+.instrumentBar strong { color: var(--ink); font-size: 16px; font-weight: 620; }
+.progressReadout { min-width: 126px; padding-left: 18px; border-left: 1px solid var(--line); text-align: right; }
+.progressReadout strong { display: block; font-family: var(--font-mono); font-size: 25px; font-weight: 500; }
+.progressReadout small { color: var(--faint); font-size: 13px; }
+.graphWrap { position: relative; height: 570px; overflow: hidden; background: #f5f8fa; transition: height 220ms var(--ease); }
+.compact .graphWrap { height: 260px; }
+.pip { border: 0; border-radius: 0; }
+.pip .instrumentBar { display: none; }
+.pip .graphWrap { height: 300px; }
+.pipExpanded .graphWrap { height: min(520px, calc(100vh - 250px)); }
+.fullscreen .graphWrap { height: calc(100vh - 102px); }
+.pip .detailBar { min-height: 52px; display: block; }
+.pip .liveStatus { display: none; }
+.pip .nodeDetail { min-height: 52px; padding: 9px 12px; border-left: 0; gap: 3px; }
+.pip .nodeDetail > span, .pip .nodeDetail > a, .pip .nodeDetail > p { display: none; }
+.pip .nodeDetail strong { font-size: 11px; }
+.pip .nodeDetail > div { gap: 8px; font-size: 8px; }
+.pip .graphLegend { left: 8px; bottom: 8px; gap: 7px; max-width: calc(100% - 16px); padding: 5px 7px; }
+.pip .graphLegend span:nth-child(-n+3) { display: none; }
+.graphWrap canvas { display: block; outline: 0; }
+.graphTools { position: absolute; top: 12px; right: 12px; display: flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: rgba(255,255,255,.94); }
+.graphTools button { min-width: 34px; height: 32px; padding: 0 9px; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--ink); font-family: var(--font-mono); font-size: 12px; cursor: pointer; }
+.graphTools button:last-child { border-right: 0; color: var(--muted); font-size: 9px; }
+.graphTools button:hover, .graphTools button:focus-visible { background: var(--cyan-wash); outline: 0; }
+.graphLegend { position: absolute; left: 12px; bottom: 11px; display: flex; flex-wrap: wrap; gap: 10px; max-width: calc(100% - 24px); padding: 7px 9px; border: 1px solid var(--line); border-radius: 4px; background: rgba(255,255,255,.94); color: var(--muted); font-family: var(--font-mono); font-size: 8px; letter-spacing: .03em; pointer-events: none; }
+.detailBar { min-height: 92px; display: grid; grid-template-columns: minmax(260px,.75fr) minmax(0,1.25fr); border-top: 1px solid var(--line); background: #fff; }
+.liveStatus, .nodeDetail { padding: 15px 18px; display: flex; flex-direction: column; gap: 5px; }
+.nodeDetail { border-left: 1px solid var(--line); }
+.liveStatus > span, .nodeDetail > span { color: var(--faint); font-size: 8px; letter-spacing: .1em; }
+.liveStatus strong, .nodeDetail strong { color: var(--ink); font-size: 13px; }
+.liveStatus small { color: var(--muted); font-family: var(--font-mono); font-size: 9px; }
+.nodeDetail > div { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-family: var(--font-mono); font-size: 9px; }
+.nodeDetail a { color: var(--cyan-deep); font-size: 10px; }
+.nodeDetail p { margin: 4px 0 0; color: var(--red); font-size: 11px; line-height: 1.5; }
+@media (prefers-reduced-motion: reduce) { .graphWrap { transition: none; } }

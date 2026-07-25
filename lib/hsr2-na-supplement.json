@@ -1,0 +1,164 @@
+[
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: New free Penacony Light Cones in Version 2.0",
+    "url": "https://www.hoyolab.com/article/24926966",
+    "publishedAt": "",
+    "dimensions": ["player", "market"],
+    "query": "Honkai Star Rail 2.0 Penacony North America HoYoLAB",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: Version 2.0 information roundup",
+    "url": "https://www.hoyolab.com/article/24629477",
+    "publishedAt": "",
+    "dimensions": ["player", "sentiment"],
+    "query": "Honkai Star Rail Version 2.0 Penacony HoYoLAB",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "Reddit: Official Version 2.0 megathread",
+    "url": "https://www.reddit.com/r/HonkaiStarRail/comments/1ajyeih",
+    "publishedAt": "2024-02-06",
+    "dimensions": ["player", "sentiment"],
+    "query": "site:reddit.com/r/HonkaiStarRail Version 2.0 Penacony megathread",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "Reddit: Developer Radio Penacony Special",
+    "url": "https://www.reddit.com/r/HonkaiStarRail/comments/18gcmm1",
+    "publishedAt": "2023-12-12",
+    "dimensions": ["market", "player"],
+    "query": "site:reddit.com/r/HonkaiStarRail Penacony Developer Radio",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "Reddit: Version 2.0 and Penacony discussion",
+    "url": "https://www.reddit.com/r/HonkaiStarRail/comments/1aqbxb4",
+    "publishedAt": "2024-02-14",
+    "dimensions": ["player", "culture"],
+    "query": "site:reddit.com/r/HonkaiStarRail 2.0 Penacony discussion",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "Reddit: Penacony launch player discussion",
+    "url": "https://www.reddit.com/r/HonkaiStarRail/comments/1an82z9",
+    "publishedAt": "2024-02-10",
+    "dimensions": ["player", "sentiment"],
+    "query": "site:reddit.com/r/HonkaiStarRail Penacony launch player reaction",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: Penacony player discussion",
+    "url": "https://www.hoyolab.com/article/25050029",
+    "publishedAt": "",
+    "dimensions": ["player", "culture"],
+    "query": "site:hoyolab.com/article Honkai Star Rail Penacony 2.0",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: Penacony story and player response",
+    "url": "https://www.hoyolab.com/article/27722269",
+    "publishedAt": "",
+    "dimensions": ["sentiment", "culture"],
+    "query": "site:hoyolab.com/article Honkai Star Rail Penacony story",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: Penacony retrospective",
+    "url": "https://www.hoyolab.com/article/30387041",
+    "publishedAt": "",
+    "dimensions": ["player", "sentiment"],
+    "query": "site:hoyolab.com/article Honkai Star Rail Penacony review",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: Penacony version discussion",
+    "url": "https://www.hoyolab.com/article/30398560",
+    "publishedAt": "",
+    "dimensions": ["player", "sentiment"],
+    "query": "site:hoyolab.com/article Honkai Star Rail Penacony version",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: Version 2.0 Penacony limited-character mini build guide",
+    "url": "https://www.hoyolab.com/article/24702264",
+    "publishedAt": "2024-01-29",
+    "dimensions": ["player", "market"],
+    "query": "site:hoyolab.com/article Honkai Star Rail Version 2.0 Penacony",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: Version 2.0 livestream recap and player poll",
+    "url": "https://www.hoyolab.com/article/24612281",
+    "publishedAt": "2024-01-26",
+    "dimensions": ["player", "sentiment"],
+    "query": "site:hoyolab.com/article Honkai Star Rail 2.0 livestream Penacony",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: Version 2.0 overview and pull-intent poll",
+    "url": "https://www.hoyolab.com/article/24611126",
+    "publishedAt": "2024-01-26",
+    "dimensions": ["player", "sentiment", "market"],
+    "query": "site:hoyolab.com/article Honkai Star Rail Version 2.0 poll",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: Version 2.0 banner pull discussion",
+    "url": "https://www.hoyolab.com/article/24621870",
+    "publishedAt": "2024-01-26",
+    "dimensions": ["player", "sentiment"],
+    "query": "site:hoyolab.com/article Honkai Star Rail 2.0 pull Penacony",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: Version 2.0 special-program overview",
+    "url": "https://www.hoyolab.com/article/24607046",
+    "publishedAt": "2024-01-26",
+    "dimensions": ["market", "culture"],
+    "query": "site:hoyolab.com/article Star Rail 2.0 special program Penacony",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "HoYoLAB: Version 2.0 If One Dreams At Midnight update",
+    "url": "https://www.hoyolab.com/article/24972208",
+    "publishedAt": "2024-02-06",
+    "dimensions": ["market", "player"],
+    "query": "site:hoyolab.com/article Version 2.0 If One Dreams At Midnight",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "Reddit: It's Always Night in Penacony Version 2.0 program",
+    "url": "https://www.reddit.com/r/HonkaiStarRail/comments/1agrt6c",
+    "publishedAt": "2024-02-02",
+    "dimensions": ["culture", "sentiment"],
+    "query": "site:reddit.com/r/HonkaiStarRail Version 2.0 Penacony program",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  },
+  {
+    "regionCode": "na",
+    "title": "Reddit: Official Version 2.0 special-program megathread",
+    "url": "https://www.reddit.com/r/HonkaiStarRail/comments/1abg31l",
+    "publishedAt": "2024-01-26",
+    "dimensions": ["player", "sentiment"],
+    "query": "site:reddit.com/r/HonkaiStarRail Official 2.0 megathread Penacony",
+    "discoveredAt": "2026-07-25T00:00:00.000Z"
+  }
+]
