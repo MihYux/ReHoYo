@@ -22,7 +22,6 @@ const {
   buildCampaignGenerationContext,
   generateCampaignCandidate,
 } = require("./campaign-generator.cjs");
-const { parseCampaignDocument } = require("./release-knowledge.cjs");
 const {
   evaluateChatInput,
   reviewCharacterOutput,
@@ -34,7 +33,6 @@ const {
   SAFE_NON_RELEASE_TEXT,
   runReleaseMessagePreflight,
 } = require("./release-message-preflight.cjs");
-const { ReleaseWorkspaceStore } = require("./release-workspace-store.cjs");
 const {
   ServiceBudgetStore,
 } = require("./service-budget.cjs");
@@ -55,13 +53,7 @@ const {
 } = require("./window-state.cjs");
 
 let petWindow;
-let operatorWindow;
 let tray;
-const launchSurface = process.env.MARCH7TH_SURFACE ?? "";
-const isOperatorMode =
-  launchSurface === "operator" || process.argv.includes("--operator");
-const isAllMode =
-  launchSurface === "all" || process.argv.includes("--all");
 let isPinned = true;
 let isQuitting = false;
 let windowStateStore;
@@ -82,7 +74,6 @@ let petDefaultScale = PET_DEFAULT_SCALE;
 function currentSize() {
   return windowMode === "panel" ? PANEL_SIZE : getPetSize(petScale);
 }
-let releaseWorkspaceStore;
 let releaseSkillLoader;
 let remotePolicySync;
 let activeRemotePolicy;
@@ -173,11 +164,7 @@ function latestRegionalReleaseMessage(data) {
 }
 
 function startCompanionDataWatcher() {
-  if (
-    companionDataWatchStarted ||
-    !companionDataPath ||
-    isOperatorMode
-  ) {
+  if (companionDataWatchStarted || !companionDataPath) {
     return;
   }
   companionDataWatchStarted = true;
@@ -649,279 +636,6 @@ function registerAiHandlers() {
         code: error?.code,
       };
     }
-  });
-}
-
-function registerOperatorHandlers() {
-  ipcMain.handle("operator:get-data", () =>
-    companionStore.getOperatorSnapshot(),
-  );
-  ipcMain.handle("operator:import-document", async (event, campaignId) => {
-    const ownerWindow = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showOpenDialog(ownerWindow, {
-      title: "导入发行方案",
-      buttonLabel: "导入",
-      filters: [
-        {
-          name: "发行方案",
-          extensions: ["docx", "pdf", "txt", "md"],
-        },
-      ],
-      properties: ["openFile"],
-    });
-    if (result.canceled || !result.filePaths[0]) {
-      return { canceled: true, data: companionStore.getOperatorSnapshot() };
-    }
-    const filePath = result.filePaths[0];
-    const parsed = await parseCampaignDocument({
-      fileName: path.basename(filePath),
-      buffer: fs.readFileSync(filePath),
-      now: companionStore.getOperatorSnapshot().demoNow,
-    });
-    return {
-      canceled: false,
-      data: companionStore.importCampaignKnowledge(campaignId, parsed),
-    };
-  });
-  ipcMain.handle("operator:import-text", async (_event, payload) => {
-    const parsed = await parseCampaignDocument({
-      fileName: payload?.title || "pasted-plan.txt",
-      text: payload?.text,
-      now: companionStore.getOperatorSnapshot().demoNow,
-    });
-    return companionStore.importCampaignKnowledge(
-      payload?.campaignId,
-      parsed,
-    );
-  });
-  ipcMain.handle("operator:review-knowledge", (_event, payload) =>
-    companionStore.reviewCampaignKnowledgeChunk(
-      payload?.campaignId,
-      payload?.chunkId,
-      payload?.input,
-    ),
-  );
-  ipcMain.handle("operator:publish-bundle", (_event, payload) =>
-    companionStore.publishCampaignBundle(
-      payload?.campaignId,
-      payload?.publisher,
-      payload?.rolloutPercent,
-    ),
-  );
-  ipcMain.handle("operator:set-kill-switch", (_event, payload) =>
-    companionStore.setGlobalCampaignKillSwitch(
-      payload?.enabled,
-      payload?.reviewer,
-    ),
-  );
-}
-
-function registerReleaseWorkspaceHandlers() {
-  const readImportFile = async (event, title) => {
-    const ownerWindow = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showOpenDialog(ownerWindow, {
-      title,
-      buttonLabel: "导入",
-      filters: [{ name: "聚合数据", extensions: ["csv", "json"] }],
-      properties: ["openFile"],
-    });
-    if (result.canceled || !result.filePaths[0]) return null;
-    return fs.readFileSync(result.filePaths[0], "utf8");
-  };
-
-  ipcMain.handle("release:get-snapshot", () => releaseWorkspaceStore.snapshot());
-  ipcMain.handle("release:switch-region", (_event, payload) =>
-    releaseWorkspaceStore.switchRegion(payload?.regionId));
-  ipcMain.handle("release:set-operator", (_event, payload) =>
-    releaseWorkspaceStore.setOperator(payload?.operatorId));
-  ipcMain.handle("release:add-region", (_event, payload) =>
-    releaseWorkspaceStore.addRegion(payload?.input));
-  ipcMain.handle("release:update-region", (_event, payload) =>
-    releaseWorkspaceStore.updateRegion(payload?.regionId, payload?.input));
-  ipcMain.handle("release:save-task", (_event, payload) =>
-    releaseWorkspaceStore.saveTask(payload?.regionId, payload?.input));
-  ipcMain.handle("release:import-plan", async (event, payload) => {
-    const ownerWindow = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showOpenDialog(ownerWindow, {
-      title: "上传区域角色共生发行方案",
-      buttonLabel: "上传并解析",
-      filters: [{
-        name: "发行方案",
-        extensions: ["docx", "pdf", "md", "txt"],
-      }],
-      properties: ["openFile"],
-    });
-    if (result.canceled || !result.filePaths[0]) {
-      return { canceled: true, data: releaseWorkspaceStore.snapshot() };
-    }
-    const filePath = result.filePaths[0];
-    const parsed = await parseCampaignDocument({
-      fileName: path.basename(filePath),
-      buffer: fs.readFileSync(filePath),
-      now: new Date().toISOString(),
-    });
-    const imported = releaseWorkspaceStore.importReleasePlan(
-      payload?.regionId,
-      parsed,
-      payload?.taskId,
-    );
-    return {
-      canceled: false,
-      data: imported.snapshot,
-      taskId: imported.taskId,
-      source: imported.source,
-    };
-  });
-  ipcMain.handle("release:import-audience", (_event, payload) =>
-    releaseWorkspaceStore.importAudience(payload?.regionId, payload?.taskId, payload?.text));
-  ipcMain.handle("release:import-audience-file", async (event, payload) => {
-    const text = await readImportFile(event, "导入匿名玩家聚合数据");
-    if (text === null) return { canceled: true, data: releaseWorkspaceStore.snapshot() };
-    return {
-      canceled: false,
-      data: releaseWorkspaceStore.importAudience(payload?.regionId, payload?.taskId, text),
-    };
-  });
-  ipcMain.handle("release:generate-directive", (_event, payload) =>
-    releaseWorkspaceStore.generateDirective(payload?.regionId, payload?.taskId, payload?.input));
-  ipcMain.handle("release:set-directive-path-paused", (_event, payload) =>
-    releaseWorkspaceStore.setDirectivePathPaused(
-      payload?.regionId, payload?.directiveId, payload?.pathId, payload?.paused,
-    ));
-  ipcMain.handle("release:review-directive", (_event, payload) =>
-    releaseWorkspaceStore.reviewDirective(
-      payload?.regionId, payload?.directiveId, payload?.decision, payload?.note,
-    ));
-  ipcMain.handle("release:save-experiment", (_event, payload) =>
-    releaseWorkspaceStore.saveExperiment(payload?.regionId, payload?.input));
-  ipcMain.handle("release:publish-to-agents", (_event, payload) =>
-    releaseWorkspaceStore.publishToAgents(
-      payload?.regionId, payload?.directiveId, payload?.experimentId,
-    ));
-  const deliverPublishedPlanToCompanion = async (
-    releaseSnapshot,
-    regionId,
-    taskId,
-    exampleMode,
-  ) => {
-    const workspace = releaseSnapshot.workspaces[regionId];
-    const planRelease = workspace?.planReleases.find(
-      (item) => item.taskId === taskId && (item.exampleMode === true) === exampleMode,
-    );
-    const bundle = workspace?.bundles.find(
-      (item) => item.id === planRelease?.bundleId,
-    );
-    if (planRelease && bundle?.payload) {
-      companionStore.reloadFromDisk();
-      const before = companionStore.getSnapshot();
-      const beforeReleaseId = latestRegionalReleaseMessage(before)?.id;
-      const deliveryInput = {
-        sourceId: planRelease.id,
-        taskId: planRelease.taskId,
-        regionId: planRelease.regionId,
-        rolloutPercent: planRelease.rolloutPercent,
-        region: bundle.payload.region,
-        plan: bundle.payload.plan,
-        source: bundle.payload.source,
-        exampleMode,
-      };
-      const prepared = companionStore.prepareRegionalReleaseMessage(deliveryInput);
-      const preflight = await reviewReleaseMessage(prepared);
-      const companionData = companionStore.receiveRegionalReleasePlan(deliveryInput, preflight);
-      notifyCompanionDataChanged(companionData);
-      const nextRelease = latestRegionalReleaseMessage(companionData);
-      if (nextRelease && nextRelease.id !== beforeReleaseId) {
-        showPetWindow();
-      }
-    }
-    return releaseSnapshot;
-  };
-  ipcMain.handle("release:publish-plan-to-agents", async (_event, payload) => {
-    const releaseSnapshot = releaseWorkspaceStore.publishPlanToAgents(
-      payload?.regionId,
-      payload?.taskId,
-      payload?.rolloutPercent,
-    );
-    return deliverPublishedPlanToCompanion(
-      releaseSnapshot,
-      payload?.regionId,
-      payload?.taskId,
-      false,
-    );
-  });
-  ipcMain.handle("release:publish-example-plan", async (_event, payload) => {
-    const releaseSnapshot = releaseWorkspaceStore.publishPlanToAgents(
-      payload?.regionId,
-      payload?.taskId,
-      100,
-      { exampleMode: true },
-    );
-    return deliverPublishedPlanToCompanion(
-      releaseSnapshot,
-      payload?.regionId,
-      payload?.taskId,
-      true,
-    );
-  });
-  ipcMain.handle("release:set-experiment-group-paused", (_event, payload) =>
-    releaseWorkspaceStore.setExperimentGroupPaused(
-      payload?.regionId, payload?.experimentId, payload?.groupId, payload?.paused,
-    ));
-  ipcMain.handle("release:import-metrics", (_event, payload) =>
-    releaseWorkspaceStore.importMetrics(
-      payload?.regionId, payload?.experimentId, payload?.text,
-    ));
-  ipcMain.handle("release:import-metrics-file", async (event, payload) => {
-    const text = await readImportFile(event, "导入每日聚合实验指标");
-    if (text === null) return { canceled: true, data: releaseWorkspaceStore.snapshot() };
-    return {
-      canceled: false,
-      data: releaseWorkspaceStore.importMetrics(
-        payload?.regionId, payload?.experimentId, text,
-      ),
-    };
-  });
-  ipcMain.handle("release:set-experiment-stage", (_event, payload) =>
-    releaseWorkspaceStore.setExperimentStage(
-      payload?.regionId, payload?.experimentId, payload?.action,
-    ));
-  ipcMain.handle("release:set-emergency-stop", (_event, payload) =>
-    releaseWorkspaceStore.setEmergencyStop(
-      payload?.regionId, payload?.enabled, payload?.reason,
-    ));
-  ipcMain.handle("release:create-optimization", (_event, payload) =>
-    releaseWorkspaceStore.createOptimization(
-      payload?.regionId, payload?.experimentId, payload?.reason,
-    ));
-  ipcMain.handle("release:export-bundle", async (event, payload) => {
-    const ownerWindow = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showSaveDialog(ownerWindow, {
-      title: "导出不可变发布包",
-      defaultPath: `march7th-release-${payload?.regionId}.json`,
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    });
-    if (result.canceled || !result.filePath) {
-      return { canceled: true, data: releaseWorkspaceStore.snapshot() };
-    }
-    const created = releaseWorkspaceStore.createBundle(
-      payload?.regionId, payload?.directiveId,
-    );
-    fs.writeFileSync(result.filePath, `${JSON.stringify(created.bundle, null, 2)}\n`, "utf8");
-    return { canceled: false, filePath: result.filePath, data: created.snapshot };
-  });
-  ipcMain.handle("release:deliver-test", (_event, payload) => {
-    const created = releaseWorkspaceStore.createBundle(
-      payload?.regionId, payload?.directiveId,
-    );
-    const directive = created.bundle.payload.directive;
-    const selectedPath = directive.paths.find((item) => item.id === payload?.pathId);
-    if (!selectedPath) throw new Error("测试路径不存在。");
-    companionStore.deliverReleaseTestMessage({
-      title: directive.theme,
-      body: selectedPath.opening,
-      sourceId: directive.id,
-    });
-    return created.snapshot;
   });
 }
 
@@ -1615,52 +1329,6 @@ function registerTtsHandlers() {
   });
 }
 
-function createOperatorWindow() {
-  if (operatorWindow && !operatorWindow.isDestroyed()) {
-    operatorWindow.show();
-    operatorWindow.focus();
-    return;
-  }
-  operatorWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1180,
-    minHeight: 700,
-    title: "三月七角色发行控制台",
-    backgroundColor: "#f5f8fa",
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, "operator-preload.cjs"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
-  operatorWindow.on("page-title-updated", (event) => {
-    event.preventDefault();
-    operatorWindow?.setTitle("三月七角色发行控制台");
-  });
-  operatorWindow.once("ready-to-show", () => {
-    operatorWindow?.maximize();
-    operatorWindow?.show();
-  });
-  operatorWindow.webContents.on("did-fail-load", () => {
-    operatorWindow?.show();
-  });
-  const devUrl = process.env.VITE_DEV_SERVER_URL;
-  if (devUrl) {
-    operatorWindow.loadURL(`${devUrl}?surface=operator`);
-  } else {
-    operatorWindow.loadFile(
-      path.join(__dirname, "..", "dist", "index.html"),
-      { query: { surface: "operator" } },
-    );
-  }
-  operatorWindow.on("closed", () => {
-    operatorWindow = undefined;
-  });
-}
-
 function recoverPetRenderer(reason) {
   if (!petWindow || petWindow.isDestroyed() || !petWindow.isVisible()) return;
   cancelActiveTtsStreams();
@@ -2024,11 +1692,6 @@ app.whenReady().then(() => {
     watch: !app.isPackaged,
   });
   companionDataPath = path.join(app.getPath("userData"), "companion-data.json");
-  releaseWorkspaceStore = new ReleaseWorkspaceStore({
-    filePath: path.join(app.getPath("userData"), "release-workspace.json"),
-    legacySnapshot: companionStore.getOperatorSnapshot(),
-    legacyFilePath: companionDataPath,
-  });
   ttsSettingsStore = new TtsSettingsStore({
     filePath: path.join(app.getPath("userData"), "tts-settings.json"),
     safeStorage,
@@ -2041,41 +1704,27 @@ app.whenReady().then(() => {
       "service-usage.json",
     ),
   });
-  if (!isOperatorMode) {
-    remotePolicySync = new RemotePolicySync({
-      cachePath: path.join(app.getPath("userData"), "regional-policy-cache.json"),
-      getRegionCode: () => profileRegionCode(companionStore.getSnapshot().profile),
-      onPolicy: applyRemotePolicy,
-    });
-    remotePolicySync.start();
-  }
+  remotePolicySync = new RemotePolicySync({
+    cachePath: path.join(app.getPath("userData"), "regional-policy-cache.json"),
+    getRegionCode: () => profileRegionCode(companionStore.getSnapshot().profile),
+    onPolicy: applyRemotePolicy,
+  });
+  remotePolicySync.start();
   registerAiHandlers();
   registerCompanionHandlers();
-  registerOperatorHandlers();
-  registerReleaseWorkspaceHandlers();
   registerServiceHandlers();
   registerPolicyHandlers();
   registerTtsHandlers();
-  if (isOperatorMode) {
-    createOperatorWindow();
-  } else {
-    createTray();
-    createPetWindow();
-    startPetRendererWatchdog();
-    startCompanionDataWatcher();
-    if (isAllMode) createOperatorWindow();
-  }
+  createTray();
+  createPetWindow();
+  startPetRendererWatchdog();
+  startCompanionDataWatcher();
   screen.on("display-added", keepPetWindowOnScreen);
   screen.on("display-removed", keepPetWindowOnScreen);
   screen.on("display-metrics-changed", keepPetWindowOnScreen);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      if (isOperatorMode) {
-        createOperatorWindow();
-      } else {
-        createPetWindow();
-        if (isAllMode) createOperatorWindow();
-      }
+      createPetWindow();
     }
   });
 });

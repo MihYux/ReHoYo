@@ -1,16 +1,16 @@
 {
-  "name": "desktop-march-7th",
+  "name": "rehoyo-pet",
   "version": "0.2.0",
   "private": true,
-  "description": "A lightweight March 7th desktop companion prototype.",
+  "description": "ReHoYo regional-policy-aware desktop pet for players.",
   "author": "MihYux",
-  "homepage": "https://github.com/MihYux/desktop-march-7th",
+  "homepage": "https://rehoyo.ccwu.cc/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MihYux/desktop-march-7th.git"
+    "url": "https://github.com/MihYux/ReHoYo.git"
   },
   "bugs": {
-    "url": "https://github.com/MihYux/desktop-march-7th/issues"
+    "url": "https://github.com/MihYux/ReHoYo/issues"
   },
   "type": "module",
   "main": "electron/main.cjs",
@@ -20,8 +20,6 @@
     "dev:electron": "wait-on tcp:127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "build": "tsc -b && vite build",
     "start": "npm run build && electron .",
-    "operator": "npm run build && cross-env MARCH7TH_SURFACE=operator electron .",
-    "all": "npm run build && cross-env MARCH7TH_SURFACE=all electron .",
     "test": "vitest run && node --test electron/release-message-preflight.test.cjs electron/ai-client.test.cjs electron/ai-settings.test.cjs electron/campaign-review.test.cjs electron/companion-store.test.cjs electron/contact-policy.test.cjs electron/content-safety.test.cjs electron/demo-scenarios.test.cjs electron/ipc-contract.test.cjs electron/prd-acceptance.test.cjs electron/release-bridge.test.cjs electron/remote-policy-sync.test.cjs electron/release-system.test.cjs electron/release-skill-loader.test.cjs electron/layered-memory.test.cjs electron/release-constraints.test.cjs electron/release-workspace-store.test.cjs electron/release-workflow.test.cjs electron/plan-publish-workflow.test.cjs electron/plan-publish-draft.test.cjs electron/regional-plan-delivery.test.cjs electron/service-budget.test.cjs electron/tts-client.test.cjs electron/tts-settings.test.cjs electron/window-state.test.cjs",
     "check": "npm run test && npm run build && npm run audit:acceptance && npm run audit:release",
     "audit:acceptance": "node scripts/acceptance-audit.cjs",
@@ -30,7 +28,9 @@
     "package": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder --publish never",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
-    "dist:mac": "npm run build && electron-builder --mac dmg --publish never"
+    "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
+    "dist:mac:x64": "npm run build && electron-builder --mac dmg --x64 --publish never",
+    "dist:mac:arm64": "npm run build && electron-builder --mac dmg --arm64 --publish never"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
@@ -56,7 +56,7 @@
   },
   "build": {
     "appId": "com.rehoyo.march7th",
-    "productName": "March 7th Desktop",
+    "productName": "ReHoYo Pet",
     "artifactName": "ReHoYo-Pet-${version}-${os}-${arch}.${ext}",
     "asar": true,
     "directories": {
@@ -65,6 +65,9 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "!electron/operator-preload.cjs",
+      "!electron/release-workspace-store.cjs",
+      "!electron/release-workspace-store.test.cjs",
       "shared/**/*",
       "docs/PRIVACY.md",
       "docs/SECURITY.md",
