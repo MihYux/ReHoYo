@@ -1,5 +1,18 @@
+import {
+  aggregateReleaseStatus,
+  broadcastReleaseBatch,
+  MAX_RELEASE_BATCH_BYTES,
+  normalizeReleaseBatch,
+  PET_STREAM_SHARD_COUNT,
+  RELEASE_BATCH_KEY,
+  releaseNotice,
+  type ReleaseBatch,
+} from "./release-broadcast";
+
 const API_PREFIX = "/api/v1/pet-policy";
 const GLOBAL_COMMAND_PATH = "/api/v1/pet-command/global";
+const RELEASE_BATCH_PATH = "/api/v2/release-batches/current";
+const PET_STREAM_PATH = "/api/v2/pet-stream";
 const MAX_POLICY_BYTES = 128 * 1024;
 const textEncoder = new TextEncoder();
 
@@ -57,6 +70,14 @@ type CommandMetadata = {
   commandVersion: string;
   checksum: string;
   publishedAt: string;
+};
+
+type ReleaseBatchMetadata = {
+  batchId: string;
+  researchRunId: string;
+  checksum: string;
+  publishedAt: string;
+  expiresAt: string;
 };
 
 function json(value: unknown, init: ResponseInit = {}) {
@@ -270,6 +291,75 @@ async function publishGlobalCommand(request: Request, env: Env) {
   return json({ ok: true, scope: "global", commandVersion: command.commandVersion, checksum, publishedAt: command.publishedAt }, { status: 201 });
 }
 
+async function readReleaseBatch(request: Request, env: Env) {
+  const result = await env.PET_POLICIES.getWithMetadata<ReleaseBatch, ReleaseBatchMetadata>(RELEASE_BATCH_KEY, {
+    type: "json",
+    cacheTtl: 60,
+  });
+  if (!result.value) return json({ error: "RELEASE_BATCH_NOT_FOUND" }, { status: 404, headers: publicHeaders('"missing"') });
+  const etag = `"${result.value.checksum}"`;
+  if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: publicHeaders(etag) });
+  const body = request.method === "HEAD" ? null : JSON.stringify(result.value);
+  return new Response(body, { status: 200, headers: { ...publicHeaders(etag), "content-type": "application/json; charset=utf-8" } });
+}
+
+async function publishReleaseBatch(request: Request, env: Env) {
+  if (!(await authorized(request, env.PUBLISH_TOKEN))) return json({ error: "UNAUTHORIZED" }, { status: 401 });
+  const declaredLength = Number(request.headers.get("content-length") || 0);
+  if (declaredLength > MAX_RELEASE_BATCH_BYTES) return json({ error: "RELEASE_BATCH_TOO_LARGE" }, { status: 413 });
+  const raw = await request.text();
+  if (textEncoder.encode(raw).byteLength > MAX_RELEASE_BATCH_BYTES) return json({ error: "RELEASE_BATCH_TOO_LARGE" }, { status: 413 });
+  let batch: ReleaseBatch;
+  try {
+    batch = await normalizeReleaseBatch(JSON.parse(raw));
+  } catch (error) {
+    return json({ error: "INVALID_RELEASE_BATCH", message: error instanceof Error ? error.message : String(error) }, { status: 400 });
+  }
+  const metadata: ReleaseBatchMetadata = {
+    batchId: batch.batchId,
+    researchRunId: batch.researchRunId,
+    checksum: batch.checksum,
+    publishedAt: batch.publishedAt,
+    expiresAt: batch.expiresAt,
+  };
+  await env.PET_POLICIES.put(RELEASE_BATCH_KEY, JSON.stringify(batch), { metadata });
+  await Promise.all(Object.entries(batch.regions).map(([code, policy]) =>
+    env.PET_POLICIES.put(keyForRegion(code), JSON.stringify(policy), {
+      metadata: { policyVersion: policy.policyVersion, checksum: policy.checksum, publishedAt: policy.publishedAt },
+    })));
+  const status = await broadcastReleaseBatch(env, batch);
+  console.log(JSON.stringify({ message: "global release batch published", researchRunId: batch.researchRunId, checksum: batch.checksum, ...status }));
+  return json({ ok: true, batchId: batch.batchId, researchRunId: batch.researchRunId, checksum: batch.checksum, publishedAt: batch.publishedAt, expiresAt: batch.expiresAt, status }, { status: 201 });
+}
+
+async function connectPetStream(request: Request, env: Env) {
+  if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+    return json({ error: "WEBSOCKET_UPGRADE_REQUIRED" }, { status: 426, headers: { upgrade: "websocket" } });
+  }
+  const url = new URL(request.url);
+  const shard = Number(url.searchParams.get("shard"));
+  if (!Number.isInteger(shard) || shard < 0 || shard >= PET_STREAM_SHARD_COUNT) return json({ error: "INVALID_SHARD" }, { status: 400 });
+  let code: string;
+  try {
+    code = regionCode(url.searchParams.get("region") || "");
+  } catch {
+    return json({ error: "INVALID_REGION" }, { status: 400 });
+  }
+  const headers = new Headers(request.headers);
+  const current = await env.PET_POLICIES.get<ReleaseBatch>(RELEASE_BATCH_KEY, "json");
+  if (current && Date.parse(current.expiresAt) > Date.now()) {
+    headers.set("x-rehoyo-current-batch", encodeURIComponent(JSON.stringify(releaseNotice(current))));
+  }
+  const target = new URL(request.url);
+  target.searchParams.set("region", code);
+  return env.PET_STREAM.getByName(`pet-stream-${shard}`).fetch(new Request(target, { method: "GET", headers }));
+}
+
+async function readReleaseStatus(request: Request, env: Env, batchId: string) {
+  if (!(await authorized(request, env.PUBLISH_TOKEN))) return json({ error: "UNAUTHORIZED" }, { status: 401 });
+  return json({ ok: true, status: await aggregateReleaseStatus(env, stringField(batchId, "batchId", 160)) }, { headers: { "cache-control": "no-store" } });
+}
+
 async function routeApi(request: Request, env: Env) {
   const url = new URL(request.url);
   if (url.pathname === "/api/health" && request.method === "GET") {
@@ -280,6 +370,14 @@ async function routeApi(request: Request, env: Env) {
     if (request.method === "PUT") return publishGlobalCommand(request, env);
     return json({ error: "METHOD_NOT_ALLOWED" }, { status: 405, headers: { allow: "GET, HEAD, PUT" } });
   }
+  if (url.pathname === RELEASE_BATCH_PATH) {
+    if (request.method === "GET" || request.method === "HEAD") return readReleaseBatch(request, env);
+    if (request.method === "PUT") return publishReleaseBatch(request, env);
+    return json({ error: "METHOD_NOT_ALLOWED" }, { status: 405, headers: { allow: "GET, HEAD, PUT" } });
+  }
+  if (url.pathname === PET_STREAM_PATH && request.method === "GET") return connectPetStream(request, env);
+  const statusMatch = url.pathname.match(/^\/api\/v2\/release-batches\/([^/]+)\/status$/);
+  if (statusMatch && request.method === "GET") return readReleaseStatus(request, env, decodeURIComponent(statusMatch[1]));
   const match = url.pathname.match(/^\/api\/v1\/pet-policy\/([^/]+)$/);
   if (!match) return json({ error: "NOT_FOUND" }, { status: 404 });
   let code: string;
@@ -308,7 +406,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     try {
-      if (url.pathname === "/api/health" || url.pathname === GLOBAL_COMMAND_PATH || url.pathname.startsWith(`${API_PREFIX}/`)) return await routeApi(request, env);
+      if (url.pathname === "/api/health" || url.pathname === GLOBAL_COMMAND_PATH || url.pathname.startsWith(`${API_PREFIX}/`) || url.pathname.startsWith("/api/v2/")) return await routeApi(request, env);
       return await env.ASSETS.fetch(request);
     } catch (error) {
       console.error(JSON.stringify({ message: "request failed", path: url.pathname, error: error instanceof Error ? error.message : String(error) }));
@@ -316,3 +414,5 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+export { PetBroadcastShard } from "./release-broadcast";

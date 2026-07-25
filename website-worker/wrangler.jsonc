@@ -23,6 +23,20 @@
       "id": "a876433ae071474488cd1b0d0c1be345"
     }
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PET_STREAM",
+        "class_name": "PetBroadcastShard"
+      }
+    ]
+  },
+  "exports": {
+    "PetBroadcastShard": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
   "observability": {
     "enabled": true,
     "logs": {
