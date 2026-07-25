@@ -1,6 +1,8 @@
 {
   "name": "rehoyo-global-launch-workspace",
-  "version": "0.1.1",
+  "version": "0.1.2",
+  "description": "Local-first global game release intelligence workspace with a March 7th companion delivery loop.",
+  "author": "MihYux",
   "private": true,
   "main": "electron/main.mjs",
   "scripts": {
@@ -14,9 +16,9 @@
     "build:icon": "python scripts/build-app-icon.py",
     "build": "next build",
     "build:server": "node scripts/clean-electron-build.mjs && next build && node scripts/prepare-electron-build.mjs",
-    "dist": "npm run build:server && electron-builder",
-    "dist:win": "npm run build:server && electron-builder --win nsis --x64",
-    "dist:mac": "npm run build:server && electron-builder --mac dmg --x64",
+    "dist": "npm run build:server && electron-builder --publish never",
+    "dist:win": "npm run build:server && electron-builder --win nsis --x64 --publish never",
+    "dist:mac": "npm run build:server && electron-builder --mac dmg --x64 --publish never",
     "build:desktop": "npm --prefix desktop-march7th run build",
     "build:all": "npm run build && npm run build:desktop",
     "start": "next start",
