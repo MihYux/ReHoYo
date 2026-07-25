@@ -83,7 +83,8 @@
       "package.json"
     ],
     "mac": {
-      "category": "public.app-category.entertainment"
+      "category": "public.app-category.entertainment",
+      "identity": null
     },
     "win": {
       "target": "nsis"
