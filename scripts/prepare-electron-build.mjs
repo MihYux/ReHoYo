@@ -23,7 +23,7 @@ await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await cp(path.join(standalone, "server.js"), path.join(output, "server.js"));
 await cp(path.join(standalone, "package.json"), path.join(output, "package.json"));
-await cp(path.join(standalone, "node_modules"), path.join(output, "node_modules"), { recursive: true });
+await cp(path.join(standalone, "node_modules"), path.join(output, "server_modules"), { recursive: true });
 await cp(path.join(standalone, ".next"), path.join(output, ".next"), { recursive: true });
 await mkdir(path.join(output, ".next"), { recursive: true });
 await cp(path.join(root, ".next", "static"), path.join(output, ".next", "static"), { recursive: true });

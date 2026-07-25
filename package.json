@@ -1,6 +1,6 @@
 {
   "name": "rehoyo-global-launch-workspace",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Local-first global game release intelligence workspace with a March 7th companion delivery loop.",
   "author": "MihYux",
   "private": true,
@@ -19,6 +19,8 @@
     "dist": "npm run build:server && electron-builder --publish never",
     "dist:win": "npm run build:server && electron-builder --win nsis --x64 --publish never",
     "dist:mac": "npm run build:server && electron-builder --mac dmg --x64 --publish never",
+    "smoke:packaged-server": "node scripts/smoke-packaged-server.mjs",
+    "smoke:packaged-app": "node scripts/smoke-packaged-app.mjs",
     "build:desktop": "npm --prefix desktop-march7th run build",
     "build:all": "npm run build && npm run build:desktop",
     "start": "next start",

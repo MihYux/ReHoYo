@@ -14,6 +14,7 @@ export default defineConfig({
       "dist-electron/**",
       "release/**",
       "desktop-march7th/**",
+      "showcase/**",
     ],
     coverage: { reporter: ["text", "html"] },
   },

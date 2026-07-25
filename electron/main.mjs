@@ -23,7 +23,7 @@ function reservePort() {
   });
 }
 
-function waitForServer(url, timeoutMs = 45_000) {
+function waitForServer(url, timeoutMs = 45_000, serverState = () => ({ exited: false, error: "" })) {
   const startedAt = Date.now();
   return new Promise((resolve, reject) => {
     const probe = () => {
@@ -33,6 +33,11 @@ function waitForServer(url, timeoutMs = 45_000) {
       });
       request.setTimeout(1_000, () => request.destroy());
       request.once("error", () => {
+        const state = serverState();
+        if (state.exited) {
+          reject(new Error(`ReHoYo server exited before startup.${state.error ? `\n\n${state.error}` : ""}`));
+          return;
+        }
         if (Date.now() - startedAt >= timeoutMs) {
           reject(new Error(`ReHoYo server did not start within ${timeoutMs / 1000} seconds.`));
           return;
@@ -49,7 +54,9 @@ async function startPackagedServer() {
   const serverEntry = path.join(serverRoot, "server.js");
   const port = await reservePort();
   const dataDir = path.join(app.getPath("userData"), ".data");
+  const serverModules = path.join(serverRoot, "server_modules");
   applicationUrl = `http://127.0.0.1:${port}`;
+  let serverError = "";
 
   serverProcess = spawn(process.execPath, [serverEntry], {
     cwd: serverRoot,
@@ -61,16 +68,24 @@ async function startPackagedServer() {
       HOSTNAME: "127.0.0.1",
       PORT: String(port),
       DATA_DIR: dataDir,
+      NODE_PATH: serverModules,
     },
   });
 
   serverProcess.stdout?.on("data", (chunk) => console.log(`[server] ${String(chunk).trimEnd()}`));
-  serverProcess.stderr?.on("data", (chunk) => console.error(`[server] ${String(chunk).trimEnd()}`));
+  serverProcess.stderr?.on("data", (chunk) => {
+    const message = String(chunk).trimEnd();
+    serverError = `${serverError}\n${message}`.trim().slice(-4_000);
+    console.error(`[server] ${message}`);
+  });
   serverProcess.once("exit", (code, signal) => {
     if (code && code !== 0) console.error(`ReHoYo server exited with code ${code} (${signal || "no signal"}).`);
   });
 
-  await waitForServer(applicationUrl);
+  await waitForServer(applicationUrl, 45_000, () => ({
+    exited: serverProcess?.exitCode !== null,
+    error: serverError,
+  }));
 }
 
 function createWindow() {
