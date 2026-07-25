@@ -8,6 +8,9 @@ export default defineConfig([
   { rules: { "react-hooks/set-state-in-effect": "off" } },
   globalIgnores([
     ".next/**",
+    ".packaging/**",
+    "dist-electron/**",
+    "release/**",
     "coverage/**",
     ".data/**",
     "desktop-march7th/**",

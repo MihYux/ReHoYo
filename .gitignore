@@ -1,5 +1,8 @@
 node_modules/
 .next/
+dist-electron/
+.packaging/
+release/
 coverage/
 .data/
 .artifacts/

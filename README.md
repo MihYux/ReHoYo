@@ -120,6 +120,23 @@ npm run dev:all
 > [!TIP]
 > 只开发工作台时使用 `npm run dev:web`；需要同时验证角色发行桥接与桌宠消费时使用 `npm run dev:all`。
 
+## 桌面安装包
+
+带 `v*` 标签的提交会触发 GitHub Actions，在 Windows 与 macOS runner 上并行构建，并把以下文件发布到同一个 GitHub Release：
+
+- Windows x64 NSIS 安装程序：`ReHoYo-<version>-win-x64.exe`
+- macOS Intel 磁盘映像：`ReHoYo-<version>-mac-x64.dmg`
+- 两个安装包的 `SHA256SUMS.txt`
+
+Windows 本机可以构建 `.exe`，但不能可靠地创建 `.dmg`；macOS 产物由 GitHub 的 macOS runner 构建。需要单独验证本机 Windows 安装包时运行：
+
+```powershell
+npm run dist:win
+```
+
+> [!WARNING]
+> 当前预览安装包尚未进行 Windows Authenticode 或 Apple Developer ID 签名。SmartScreen 或 Gatekeeper 可能要求用户手动确认，正式分发前应配置签名与 Apple notarization。
+
 ## 角色共生发行链路
 
 ### 从最终方案导入

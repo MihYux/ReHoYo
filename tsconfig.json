@@ -37,6 +37,9 @@
   ],
   "exclude": [
     "node_modules",
-    "desktop-march7th"
+    "desktop-march7th",
+    "dist-electron",
+    ".packaging",
+    "release"
   ]
 }

@@ -13,6 +13,10 @@
     "setup:all": "npm install && npm --prefix desktop-march7th install",
     "build:icon": "python scripts/build-app-icon.py",
     "build": "next build",
+    "build:server": "node scripts/clean-electron-build.mjs && next build && node scripts/prepare-electron-build.mjs",
+    "dist": "npm run build:server && electron-builder",
+    "dist:win": "npm run build:server && electron-builder --win nsis --x64",
+    "dist:mac": "npm run build:server && electron-builder --mac dmg --x64",
     "build:desktop": "npm --prefix desktop-march7th run build",
     "build:all": "npm run build && npm run build:desktop",
     "start": "next start",
@@ -61,12 +65,42 @@
     "@types/react-dom": "^19.2.3",
     "concurrently": "^9.2.1",
     "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.2.11",
     "jsdom": "^29.1.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
     "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.rehoyo.workspace",
+    "productName": "ReHoYo",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".packaging/server",
+        "to": "app-server"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "electron/app-icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "electron/app-icon.png",
+      "category": "public.app-category.productivity",
+      "identity": null
+    }
   },
   "overrides": {
     "postcss": "8.5.12",
