@@ -85,6 +85,28 @@ export async function publishPetPolicy(input: {
     });
     const result = await response.json().catch(() => null) as (PetPolicyPublishResult & { error?: string; message?: string }) | null;
     if (!response.ok || !result?.ok) throw new Error(`区域策略上传失败（HTTP ${response.status}）：${result?.message || result?.error || "Worker 未返回有效结果"}`);
+    const commandResponse = await fetch(`${PET_POLICY_SERVICE_URL}/api/v1/pet-command/global`, {
+      method: "PUT",
+      signal: controller.signal,
+      headers: {
+        authorization: `Bearer ${settings.delivery.publishToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        schemaVersion: 1,
+        commandVersion: input.policyVersion,
+        publishedAt: input.publishedAt,
+        rolloutPercent: input.rolloutPercent,
+        delivery: {
+          messageMode: "casual_check_in",
+          frequencyBypass: true,
+        },
+      }),
+    });
+    const commandResult = await commandResponse.json().catch(() => null) as { ok?: boolean; error?: string; message?: string } | null;
+    if (!commandResponse.ok || !commandResult?.ok) {
+      throw new Error(`全局桌宠命令上传失败（HTTP ${commandResponse.status}）：${commandResult?.message || commandResult?.error || "Worker 未返回有效结果"}`);
+    }
     return result;
   } catch (error) {
     if ((error as Error).name === "AbortError") throw new Error("区域策略上传超时，请检查 Worker 连接后重试。");

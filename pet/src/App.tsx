@@ -12,7 +12,6 @@ import {
   BookOpenText,
   Camera,
   ChatCircleDots,
-  CursorClick,
   EnvelopeSimple,
   GearSix,
   Minus,
@@ -51,6 +50,7 @@ import type { CompanionOnboardingInput } from "./domain/types";
 import { createRendererPreviewData } from "./domain/preview-data";
 import { countUnreadDeliverableMessages } from "./domain/messages";
 import { derivePetActivity } from "./domain/pet-activity";
+import { restoreChatMessages } from "./domain/chat-history";
 import petWindowConfig from "../shared/pet-window-config.json";
 
 const AlbumPanel = lazy(() =>
@@ -344,6 +344,34 @@ function App() {
         .getData()
         .then(setCompanionData)
         .catch(() => setCompanionData(null));
+      window.marchDesktop.companion
+        .getChatHistory(CHAT_HISTORY_TURN_LIMIT)
+        .then((episodes) => {
+          const restored = restoreChatMessages(
+            episodes,
+            CHAT_HISTORY_TURN_LIMIT,
+          );
+          if (!restored.length || nextMessageId.current !== 2) return;
+          const nextMessages = restored.map((message, index) => ({
+            id: index + 1,
+            role: message.role,
+            text: message.text,
+            ...(message.role === "march"
+              ? { mood: inferMood(message.text) }
+              : {}),
+          }));
+          nextMessageId.current = nextMessages.length + 1;
+          setMessages(nextMessages);
+          const lastMarch = [...nextMessages]
+            .reverse()
+            .find((message) => message.role === "march");
+          if (lastMarch) {
+            setBubble(lastMarch.text);
+            setBubbleSpeechText(lastMarch.text);
+            setMood(lastMarch.mood ?? inferMood(lastMarch.text));
+          }
+        })
+        .catch(() => {});
     } else {
       setCompanionData(createRendererPreviewData());
     }
@@ -878,15 +906,17 @@ function App() {
     ],
   );
 
-  const surpriseMe = () => {
+  const openPetChat = () => {
     if (performance.now() < suppressCharacterClickUntilRef.current) {
       suppressCharacterClickUntilRef.current = 0;
       return;
     }
-    const reply = IDLE_LINES[Math.floor(Math.random() * IDLE_LINES.length)];
     registerPlayerInteraction();
-    speak(reply.text, reply.mood);
-    void playSpeech(reply.text, reply.mood);
+    if (windowMode === "panel") {
+      setPanelTab("chat");
+      return;
+    }
+    setBubbleChatOpen(true);
   };
 
   const takePhoto = async () => {
@@ -1161,9 +1191,9 @@ function App() {
       <button
         className="character-button"
         type="button"
-        aria-label="和三月七打招呼"
-        title="单击互动，也可以拖动窗口"
-        onClick={surpriseMe}
+        aria-label="打开和三月七的对话"
+        title="单击打开对话，也可以拖动窗口"
+        onClick={openPetChat}
       >
         <img
           src="./assets/march7th-pet.png"

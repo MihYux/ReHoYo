@@ -1,4 +1,5 @@
 const API_PREFIX = "/api/v1/pet-policy";
+const GLOBAL_COMMAND_PATH = "/api/v1/pet-command/global";
 const MAX_POLICY_BYTES = 128 * 1024;
 const textEncoder = new TextEncoder();
 
@@ -34,8 +35,26 @@ type PetPolicy = {
   checksum: string;
 };
 
+type GlobalPetCommand = {
+  schemaVersion: 1;
+  commandVersion: string;
+  publishedAt: string;
+  rolloutPercent: number;
+  delivery: {
+    messageMode: "casual_check_in";
+    frequencyBypass: true;
+  };
+  checksum: string;
+};
+
 type PolicyMetadata = {
   policyVersion: string;
+  checksum: string;
+  publishedAt: string;
+};
+
+type CommandMetadata = {
+  commandVersion: string;
   checksum: string;
   publishedAt: string;
 };
@@ -132,6 +151,28 @@ function normalizePolicy(value: unknown): Omit<PetPolicy, "checksum"> {
   };
 }
 
+function normalizeCommand(value: unknown): Omit<GlobalPetCommand, "checksum"> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Command body must be an object");
+  const input = value as Record<string, unknown>;
+  const delivery = input.delivery as Record<string, unknown> | undefined;
+  const rolloutPercent = Number(input.rolloutPercent);
+  if (input.schemaVersion !== 1) throw new Error("Unsupported command contract");
+  if (!Number.isInteger(rolloutPercent) || rolloutPercent < 1 || rolloutPercent > 100) throw new Error("rolloutPercent must be 1-100");
+  if (!delivery || delivery.messageMode !== "casual_check_in" || delivery.frequencyBypass !== true) {
+    throw new Error("delivery is invalid");
+  }
+  return {
+    schemaVersion: 1,
+    commandVersion: stringField(input.commandVersion, "commandVersion", 160),
+    publishedAt: stringField(input.publishedAt, "publishedAt", 64),
+    rolloutPercent,
+    delivery: {
+      messageMode: "casual_check_in",
+      frequencyBypass: true,
+    },
+  };
+}
+
 async function sha256(value: string) {
   const digest = await crypto.subtle.digest("SHA-256", textEncoder.encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -159,6 +200,8 @@ async function authorized(request: Request, secret: string | undefined) {
 function keyForRegion(code: string) {
   return `pet-policy:${code}`;
 }
+
+const GLOBAL_COMMAND_KEY = "pet-command:GLOBAL";
 
 async function readPolicy(request: Request, env: Env, code: string) {
   const result = await env.PET_POLICIES.getWithMetadata<PetPolicy, PolicyMetadata>(keyForRegion(code), {
@@ -193,10 +236,49 @@ async function publishPolicy(request: Request, env: Env, code: string) {
   return json({ ok: true, region: code, policyVersion: policy.policyVersion, checksum, publishedAt: policy.publishedAt }, { status: 201 });
 }
 
+async function readGlobalCommand(request: Request, env: Env) {
+  const result = await env.PET_POLICIES.getWithMetadata<GlobalPetCommand, CommandMetadata>(GLOBAL_COMMAND_KEY, {
+    type: "json",
+    cacheTtl: 60,
+  });
+  if (!result.value) return json({ error: "COMMAND_NOT_FOUND" }, { status: 404, headers: publicHeaders('"missing"') });
+  const etag = `"${result.value.checksum}"`;
+  if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: publicHeaders(etag) });
+  const body = request.method === "HEAD" ? null : JSON.stringify(result.value);
+  return new Response(body, { status: 200, headers: { ...publicHeaders(etag), "content-type": "application/json; charset=utf-8" } });
+}
+
+async function publishGlobalCommand(request: Request, env: Env) {
+  if (!(await authorized(request, env.PUBLISH_TOKEN))) return json({ error: "UNAUTHORIZED" }, { status: 401 });
+  const raw = await request.text();
+  if (textEncoder.encode(raw).byteLength > MAX_POLICY_BYTES) return json({ error: "COMMAND_TOO_LARGE" }, { status: 413 });
+  let normalized: Omit<GlobalPetCommand, "checksum">;
+  try {
+    normalized = normalizeCommand(JSON.parse(raw));
+  } catch (error) {
+    return json({ error: "INVALID_COMMAND", message: error instanceof Error ? error.message : String(error) }, { status: 400 });
+  }
+  const checksum = await sha256(JSON.stringify(normalized));
+  const command: GlobalPetCommand = { ...normalized, checksum };
+  const metadata: CommandMetadata = {
+    commandVersion: command.commandVersion,
+    checksum,
+    publishedAt: command.publishedAt,
+  };
+  await env.PET_POLICIES.put(GLOBAL_COMMAND_KEY, JSON.stringify(command), { metadata });
+  console.log(JSON.stringify({ message: "global pet command published", commandVersion: command.commandVersion, checksum }));
+  return json({ ok: true, scope: "global", commandVersion: command.commandVersion, checksum, publishedAt: command.publishedAt }, { status: 201 });
+}
+
 async function routeApi(request: Request, env: Env) {
   const url = new URL(request.url);
   if (url.pathname === "/api/health" && request.method === "GET") {
     return json({ ok: true, service: "rehoyo-pet-policy", storage: "cloudflare-kv" }, { headers: { "cache-control": "no-store" } });
+  }
+  if (url.pathname === GLOBAL_COMMAND_PATH) {
+    if (request.method === "GET" || request.method === "HEAD") return readGlobalCommand(request, env);
+    if (request.method === "PUT") return publishGlobalCommand(request, env);
+    return json({ error: "METHOD_NOT_ALLOWED" }, { status: 405, headers: { allow: "GET, HEAD, PUT" } });
   }
   const match = url.pathname.match(/^\/api\/v1\/pet-policy\/([^/]+)$/);
   if (!match) return json({ error: "NOT_FOUND" }, { status: 404 });
@@ -226,7 +308,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     try {
-      if (url.pathname === "/api/health" || url.pathname.startsWith(`${API_PREFIX}/`)) return await routeApi(request, env);
+      if (url.pathname === "/api/health" || url.pathname === GLOBAL_COMMAND_PATH || url.pathname.startsWith(`${API_PREFIX}/`)) return await routeApi(request, env);
       return await env.ASSETS.fetch(request);
     } catch (error) {
       console.error(JSON.stringify({ message: "request failed", path: url.pathname, error: error instanceof Error ? error.message : String(error) }));

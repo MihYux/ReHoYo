@@ -26,6 +26,20 @@ test("records compact episodes and silently promotes safe explicit memories", ()
   });
   assert.ok(episode);
   assert.equal(store.getPendingMemoryEpisodes().length, 1);
+  assert.deepEqual(
+    store.getRecentConversationHistory(10).map((item) => ({
+      user: item.userSummary,
+      assistant: item.assistantSummary,
+    })),
+    [{
+      user: "我最喜欢角色剧情，尤其是同伴之间的故事。",
+      assistant: "那咱以后聊故事时会记得照顾你的节奏。",
+    }],
+  );
+  assert.equal(
+    store.getRelevantMemoryContext("完全不同的话题", { episodeLimit: 3 }).episodes[0].turnId,
+    "turn-1",
+  );
 
   store.applyMemoryRefinement(
     [
@@ -88,6 +102,7 @@ test("memory switch stops episode capture without deleting prior data", () => {
     durable: [],
     episodes: [],
   });
+  assert.deepEqual(store.getRecentConversationHistory(), []);
 });
 
 

@@ -93,6 +93,8 @@ contextBridge.exposeInMainWorld("marchDesktop", {
       ipcRenderer.invoke("companion:set-memory-enabled", enabled),
     recordConversationTurn: (input) =>
       ipcRenderer.invoke("companion:record-conversation-turn", input),
+    getChatHistory: (limit) =>
+      ipcRenderer.invoke("companion:get-chat-history", limit),
     proposeMemoryCandidate: (text, sourceId) =>
       ipcRenderer.invoke("companion:propose-memory-candidate", {
         text,

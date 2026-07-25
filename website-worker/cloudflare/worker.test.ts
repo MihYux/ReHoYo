@@ -13,7 +13,16 @@ const policy = {
   checksum: "a".repeat(64),
 };
 
-function environment(value: typeof policy | null = policy) {
+const command = {
+  schemaVersion: 1,
+  commandVersion: "command-1",
+  publishedAt: "2026-07-25T00:00:00.000Z",
+  rolloutPercent: 50,
+  delivery: { messageMode: "casual_check_in", frequencyBypass: true },
+  checksum: "b".repeat(64),
+};
+
+function environment(value: unknown = policy) {
   return {
     PUBLISH_TOKEN: "test-token",
     PET_POLICIES: {
@@ -55,5 +64,24 @@ describe("pet policy worker", () => {
     expect(response.status).toBe(201);
     const stored = JSON.parse((env.PET_POLICIES.put as ReturnType<typeof vi.fn>).mock.calls[0][1] as string);
     expect(stored.delivery).toEqual({ messageMode: "casual_check_in", frequencyBypass: true });
+  });
+
+  it("publishes one global rollout command for pets in every region", async () => {
+    const env = environment(null);
+    const response = await worker.fetch(new Request("https://rehoyo.ccwu.cc/api/v1/pet-command/global", {
+      method: "PUT",
+      headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: JSON.stringify(command),
+    }), env, {} as ExecutionContext);
+    expect(response.status).toBe(201);
+    expect((env.PET_POLICIES.put as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe("pet-command:GLOBAL");
+    const stored = JSON.parse((env.PET_POLICIES.put as ReturnType<typeof vi.fn>).mock.calls[0][1] as string);
+    expect(stored).toMatchObject({ commandVersion: "command-1", rolloutPercent: 50 });
+  });
+
+  it("serves the same global command without a region path", async () => {
+    const response = await worker.fetch(new Request("https://rehoyo.ccwu.cc/api/v1/pet-command/global"), environment(command), {} as ExecutionContext);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ commandVersion: "command-1", rolloutPercent: 50 });
   });
 });

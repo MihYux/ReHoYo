@@ -30,6 +30,7 @@ import type {
   DemoAction,
   DemoScenarioId,
   DemoScenarioSummary,
+  ConversationEpisode,
   DesktopRoute,
   DesktopWindowStatus,
 } from "./domain/types";
@@ -100,6 +101,7 @@ declare global {
           replySource: "model" | "local" | "error";
           topics?: string[];
         }) => Promise<CompanionData>;
+        getChatHistory: (limit?: number) => Promise<ConversationEpisode[]>;
         proposeMemoryCandidate: (
           text: string,
           sourceId: string,

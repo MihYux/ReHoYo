@@ -1484,15 +1484,37 @@ class CompanionStore {
           `${episode.userSummary} ${episode.assistantSummary} ${episode.topics.join(" ")}`,
         ),
       }))
-      .filter(({ score }) => score > 0)
       .sort(
         (left, right) =>
           right.score - left.score ||
           Date.parse(right.episode.createdAt) - Date.parse(left.episode.createdAt),
       )
-      .slice(0, Math.max(0, Math.min(3, episodeLimit)))
+      .slice(0, Math.max(0, Math.min(10, episodeLimit)))
       .map(({ episode }) => clone(episode));
     return { durable, episodes };
+  }
+
+  getRecentConversationHistory(limit = 10) {
+    if (
+      this.data.profile.memoryEnabled !== true ||
+      this.data.relationship.memoryEnabled !== true
+    ) {
+      return [];
+    }
+    return this.data.conversationEpisodes
+      .slice(-Math.max(1, Math.min(50, Number(limit) || 10)))
+      .map((episode) => ({
+        id: episode.id,
+        conversationId: episode.conversationId,
+        turnId: episode.turnId,
+        createdAt: episode.createdAt,
+        expiresAt: episode.expiresAt,
+        userSummary: episode.userSummary,
+        assistantSummary: episode.assistantSummary,
+        topics: clone(episode.topics),
+        replySource: episode.replySource,
+        ...(episode.refinedAt ? { refinedAt: episode.refinedAt } : {}),
+      }));
   }
 
   recordConversationTurn(input) {

@@ -33,6 +33,7 @@ const {
 const { CompanionStore } = require("./companion-store.cjs");
 const { ReleaseSkillLoader } = require("./release-skill-loader.cjs");
 const { RemotePolicySync, profileRegionCode } = require("./remote-policy-sync.cjs");
+const { RemoteCommandSync } = require("./remote-command-sync.cjs");
 const {
   SAFE_NON_RELEASE_TEXT,
   runReleaseMessagePreflight,
@@ -80,6 +81,7 @@ function currentSize() {
 }
 let releaseSkillLoader;
 let remotePolicySync;
+let remoteCommandSync;
 let activeRemotePolicy;
 let memoryRefinementTimer;
 let memoryRefinementRunning = false;
@@ -418,22 +420,32 @@ async function reviewReleaseMessage(prepared) {
   return runReleaseMessagePreflight({ ...prepared, requestReview });
 }
 
-async function applyRemotePolicy(policy, state) {
+async function applyRemotePolicy(policy) {
   activeRemotePolicy = policy;
+}
+
+async function applyRemoteCommand(command, state) {
   if (!state?.changed) return;
   companionStore.reloadFromDisk();
   const before = companionStore.getSnapshot();
   const beforeReleaseId = latestRegionalReleaseMessage(before)?.id;
   const deliveryInput = {
-    sourceId: policy.policyVersion,
-    taskId: policy.plan.id,
-    regionId: policy.region.id,
-    rolloutPercent: policy.rolloutPercent,
-    region: policy.region,
-    plan: policy.plan,
+    sourceId: `global-command:${command.commandVersion}`,
+    taskId: "global-casual-check-in",
+    regionId: "global",
+    rolloutPercent: command.rolloutPercent,
+    region: activeRemotePolicy?.region || {},
+    plan: {
+      id: "global-casual-check-in",
+      title: "全局自然问候",
+      theme: "按照桌宠当前在线指南自然陪伴用户",
+      narrative: "只发起轻松日常聊天，不主动宣布版本更新",
+      timeWindow: "收到命令后执行一次",
+      facts: [],
+    },
     source: null,
-    messageMode: policy.delivery?.messageMode || "casual_check_in",
-    frequencyBypass: policy.delivery?.frequencyBypass === true,
+    messageMode: command.delivery.messageMode,
+    frequencyBypass: command.delivery.frequencyBypass === true,
   };
   const prepared = companionStore.prepareRegionalReleaseMessage(deliveryInput);
   const preflight = await reviewReleaseMessage(prepared);
@@ -452,9 +464,21 @@ function registerServiceHandlers() {
 function registerPolicyHandlers() {
   ipcMain.handle("policy:get-status", () => remotePolicySync?.getStatus() || null);
   ipcMain.handle("policy:sync", async () => {
-    if (!remotePolicySync) return { ok: false, error: "区域策略同步未启用。" };
+    if (!remotePolicySync || !remoteCommandSync) return { ok: false, error: "云端同步未启用。" };
     try {
-      const result = await remotePolicySync.sync();
+      const [policyResult, commandResult] = await Promise.all([
+        remotePolicySync.sync(),
+        remoteCommandSync.sync(),
+      ]);
+      const result = {
+        status: [policyResult.status, commandResult.status].includes("updated")
+          ? "updated"
+          : commandResult.status === "not_found"
+            ? policyResult.status
+            : commandResult.status,
+        policy: policyResult,
+        command: commandResult,
+      };
       return { ok: true, result, status: remotePolicySync.getStatus() };
     } catch (error) {
       return { ok: false, error: error?.message || "区域策略同步失败。", status: remotePolicySync.getStatus() };
@@ -571,14 +595,15 @@ function registerAiHandlers() {
         : undefined;
       const relevantMemory = companionStore.getRelevantMemoryContext(
         latestUserMessage?.content ?? "",
-        { durableLimit: 5, episodeLimit: 3 },
+        { durableLimit: 5, episodeLimit: 6 },
       );
       const memoryLines = [
         ...relevantMemory.durable.map(
           (memory) => `- 长期记忆：${memory.summary}`,
         ),
         ...relevantMemory.episodes.map(
-          (episode) => `- 近期对话：${episode.userSummary}`,
+          (episode) =>
+            `- 过去对话：用户说“${episode.userSummary}”；你当时回复“${episode.assistantSummary}”`,
         ),
       ];
       const memoryContext = memoryLines.length
@@ -815,6 +840,9 @@ function registerCompanionHandlers() {
     if (episode) scheduleMemoryRefinement();
     return companionStore.getPlayerSnapshot();
   });
+  ipcMain.handle("companion:get-chat-history", (_event, limit) =>
+    companionStore.getRecentConversationHistory(limit),
+  );
   ipcMain.handle("companion:propose-memory-candidate", (_event, payload) =>
     companionStore.proposeChatMemoryCandidate(
       payload?.text,
@@ -1718,7 +1746,12 @@ app.whenReady().then(() => {
     getRegionCode: () => profileRegionCode(companionStore.getSnapshot().profile),
     onPolicy: applyRemotePolicy,
   });
+  remoteCommandSync = new RemoteCommandSync({
+    cachePath: path.join(app.getPath("userData"), "global-command-cache.json"),
+    onCommand: applyRemoteCommand,
+  });
   remotePolicySync.start();
+  remoteCommandSync.start();
   registerAiHandlers();
   registerCompanionHandlers();
   registerServiceHandlers();
@@ -1747,6 +1780,7 @@ app.on("before-quit", () => {
   clearInterval(petRendererWatchdog);
   releaseSkillLoader?.close();
   remotePolicySync?.close();
+  remoteCommandSync?.close();
   if (windowStateStore) {
     persistWindowState();
   }
