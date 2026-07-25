@@ -54,7 +54,6 @@ async function startPackagedServer() {
   const serverEntry = path.join(serverRoot, "server.js");
   const port = await reservePort();
   const dataDir = path.join(app.getPath("userData"), ".data");
-  const serverModules = path.join(serverRoot, "server_modules");
   applicationUrl = `http://127.0.0.1:${port}`;
   let serverError = "";
 
@@ -68,7 +67,6 @@ async function startPackagedServer() {
       HOSTNAME: "127.0.0.1",
       PORT: String(port),
       DATA_DIR: dataDir,
-      NODE_PATH: serverModules,
     },
   });
 

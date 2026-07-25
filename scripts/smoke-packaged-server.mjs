@@ -30,7 +30,6 @@ const child = spawn(executable, [serverEntry], {
     HOSTNAME: "127.0.0.1",
     PORT: String(port),
     DATA_DIR: dataDir,
-    NODE_PATH: path.join(serverRoot, "server_modules"),
   },
 });
 
