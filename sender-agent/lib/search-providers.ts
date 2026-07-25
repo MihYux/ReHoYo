@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db, ensureDb, searchResultCache } from "@/lib/db";
 import { searchWeb } from "@/lib/glm";
+import { readOperatorSettingsSync } from "@/lib/operator-settings";
 import type { ResearchDimension } from "@/lib/region-profiles";
 
 export type SearchProviderName = "glm";
@@ -10,7 +11,6 @@ export type SearchHit = { provider: SearchProviderName; title: string; url: stri
 export type ProviderSearchResult = { provider: SearchProviderName; requestId: string; query: string; hits: SearchHit[]; latencyMs: number; rateLimited: boolean; credits?: number; error?: string; disabled?: boolean; source: "live" | "cache"; cachedAt?: string };
 export type SearchProviderConfiguration = { glm: { configured: boolean; model: string } };
 
-const GLM_MODEL = process.env.GLM_MODEL || "glm-5.2";
 const MAX_CONCURRENT_PROVIDER_REQUESTS = 4;
 const providerFailures = new Map<SearchProviderName, { count: number; openUntil: number }>();
 let activeRequests = 0;
@@ -62,7 +62,8 @@ async function writeCachedResult(provider: SearchProviderName, request: SearchRe
 }
 
 export function searchProviderConfiguration(): SearchProviderConfiguration {
-  return { glm: { configured: Boolean(process.env.ZHIPU_API_KEY), model: GLM_MODEL } };
+  const settings = readOperatorSettingsSync();
+  return { glm: { configured: Boolean(settings.glm.apiKey), model: settings.glm.model } };
 }
 
 async function withProviderSlot<T>(task: () => Promise<T>) {

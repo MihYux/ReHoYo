@@ -11,21 +11,39 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.label }}
+    name: Build ${{ matrix.app }} for ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - label: Windows x64
+          - app: Sender Agent
+            platform: Windows x64
             os: windows-latest
+            directory: sender-agent
             command: npm run dist:win
-            artifact: ReHoYo-Windows-x64
-            files: release/*.exe
-          - label: macOS x64
+            artifact: ReHoYo-Sender-Agent-Windows-x64
+            files: sender-agent/release/*.exe
+          - app: Sender Agent
+            platform: macOS x64
             os: macos-15-intel
-            command: npm run dist:mac
-            artifact: ReHoYo-macOS-x64
-            files: release/*.dmg
+            directory: sender-agent
+            command: npm run dist:mac:x64
+            artifact: ReHoYo-Sender-Agent-macOS-x64
+            files: sender-agent/release/*.dmg
+          - app: Pet
+            platform: Windows x64
+            os: windows-latest
+            directory: pet
+            command: npm run dist:win
+            artifact: ReHoYo-Pet-Windows-x64
+            files: pet/release/*.exe
+          - app: Pet
+            platform: macOS x64
+            os: macos-15-intel
+            directory: pet
+            command: npm run dist:mac:x64
+            artifact: ReHoYo-Pet-macOS-x64
+            files: pet/release/*.dmg
     runs-on: ${{ matrix.os }}
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -35,8 +53,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
       - run: npm ci
+        working-directory: ${{ matrix.directory }}
       - run: ${{ matrix.command }}
+        working-directory: ${{ matrix.directory }}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -62,8 +83,12 @@ jobs:
           body: |
             ## ReHoYo desktop installers
 
-            - Windows x64: unsigned NSIS `.exe`
-            - macOS Intel: unsigned `.dmg`
+            Two independent applications are included:
+
+            - ReHoYo Sender Agent for employees
+            - ReHoYo Pet for players
+
+            Each app has a Windows x64 NSIS installer and a macOS Intel DMG.
 
             > [!WARNING]
             > These preview installers are not code-signed. Windows SmartScreen or macOS Gatekeeper may require manual confirmation.

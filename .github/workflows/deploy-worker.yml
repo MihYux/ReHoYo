@@ -1,0 +1,33 @@
+name: Deploy website Worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "website-worker/**"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website-worker/package-lock.json
+      - run: npm ci
+        working-directory: website-worker
+      - run: npm test
+        working-directory: website-worker
+      - run: npm run deploy
+        working-directory: website-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

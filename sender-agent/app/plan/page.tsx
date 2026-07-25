@@ -606,7 +606,7 @@ function PlanAgentConsole({ plan, activeRegionId, configured, disabled, running,
       </div>
       {error ? <div className={styles.agentError}><Warning size={14} />{error}</div> : null}
       <div className={styles.agentCommand}>
-        <div><span className="mono">{running ? "AGENT WORKING" : "MESSAGE THE DOCUMENT"}</span><textarea aria-label="AI 文档修改指令" rows={2} placeholder={configured ? "例如：将中国大陆方案调整为以时刻场景美术为核心" : "配置 ZHIPU_API_KEY 后可使用"} value={prompt} disabled={!configured || disabled || running} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void run(); } }} /></div>
+        <div><span className="mono">{running ? "AGENT WORKING" : "MESSAGE THE DOCUMENT"}</span><textarea aria-label="AI 文档修改指令" rows={2} placeholder={configured ? "例如：将中国大陆方案调整为以时刻场景美术为核心" : "请先在连接设置中粘贴智谱 API Key"} value={prompt} disabled={!configured || disabled || running} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void run(); } }} /></div>
       {latestUndo ? <button type="button" className={styles.agentUndo} onClick={() => void undo()} disabled={undoing || running} title="撤销最近一次 Agent 修改"><ArrowCounterClockwise size={16} /></button> : null}
       <button type="button" className={styles.agentSend} onClick={() => void run()} disabled={!configured || disabled || running || prompt.trim().length < 2} aria-label="发送文档修改指令"><PaperPlaneRight size={17} weight="fill" /></button>
       </div>
