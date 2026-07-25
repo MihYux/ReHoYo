@@ -7,9 +7,11 @@ import {
   type ProjectSnapshot,
   type RegionConfig,
 } from "@/lib/contracts";
-import { db, ensureDb, getCitations, getProject, getRegions, jobs, projects, researchRuns, setPlan } from "@/lib/db";
+import { db, ensureDb, getCitations, getProject, getRegions, jobs, projects, regions as regionTable, researchRuns, setPlan } from "@/lib/db";
 import { generateGlobalReleaseAxis, generateRegionalReleasePlan } from "@/lib/workflow";
 import { fingerprintInputs } from "@/lib/governance";
+import { embeddedDemoDelayMs } from "@/lib/embedded-demo";
+import { embeddedDemoPlan } from "@/lib/embedded-demo-fixture";
 
 const globalRuntime = globalThis as typeof globalThis & {
   __rehoyoPlanJobs?: Map<string, Promise<void>>;
@@ -19,6 +21,10 @@ globalRuntime.__rehoyoPlanJobs = runtimes;
 
 function now() {
   return new Date().toISOString();
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function parsePreview(result: string) {
@@ -98,12 +104,47 @@ async function runPlanJob(jobId: string) {
     if (project.updatedAt !== preview.projectUpdatedAt) {
       throw new Error("生成期间版本或区域资料已发生变化。实时草稿已保留，请重新生成最新方案。");
     }
-    const selected = allRegions.filter((region) => region.selected && region.status === "quality_passed" && region.analysis && !region.analysis.differentiation?.provisional);
+    const selected = allRegions.filter((region) => (project.embeddedDemo?.eligible || region.selected) && region.status === "quality_passed" && region.analysis && !region.analysis.differentiation?.provisional);
     if (!selected.length || !sameRegionSnapshot(preview, selected.map((region) => region.id))) {
       throw new Error("生成期间已审核区域集合发生变化。实时草稿已保留，请重新生成最新方案。");
     }
     if (preview.inputFingerprint && preview.inputFingerprint !== inputFingerprint(project, selected)) {
       throw new Error("生成期间版本或区域内容已发生变化。实时草稿已保留，请重新生成最新方案。");
+    }
+
+    if (project.embeddedDemo?.eligible) {
+      const startedAt = Date.now();
+      const totalDelay = embeddedDemoDelayMs();
+      const plan = embeddedDemoPlan(project.activeResearchRunId);
+      preview = await persistPreview(jobId, { ...preview, phase: "global_axis", activeRegionIds: [] });
+      await delay(Math.max(0, Math.floor(totalDelay * 0.35) - (Date.now() - startedAt)));
+      preview = await persistPreview(jobId, {
+        ...preview,
+        global: {
+          globalAxis: plan.globalAxis,
+          globalPrinciples: plan.globalPrinciples,
+          commonMoments: plan.commonMoments,
+          globalKpis: plan.globalKpis,
+          sourceIds: plan.sourceIds,
+        },
+        sourceIds: plan.sourceIds,
+        completedSections: 1,
+        phase: "regional_plans",
+        activeRegionIds: preview.regionOrder.map((region) => region.id),
+      });
+      await delay(Math.max(0, Math.floor(totalDelay * 0.75) - (Date.now() - startedAt)));
+      preview = await persistPreview(jobId, {
+        ...preview,
+        regions: structuredClone(plan.regions),
+        characterSymbiosisRelease: structuredClone(plan.characterSymbiosisRelease),
+        completedSections: preview.totalSections,
+        phase: "assembling",
+        activeRegionIds: [],
+      });
+      await delay(Math.max(0, totalDelay - (Date.now() - startedAt)));
+      await setPlan(plan, "needs_review");
+      await persistPreview(jobId, { ...preview, phase: "completed", completedSections: preview.totalSections }, { status: "completed", progress: 100, error: "" });
+      return;
     }
 
     if (!preview.global) {
@@ -244,10 +285,14 @@ export async function createPlanGenerationJob() {
     return getPlanGenerationJob(active.id);
   }
 
-  const [project, regions] = await Promise.all([getProject(), getRegions()]);
+  const [project, regionRows] = await Promise.all([getProject(), getRegions()]);
+  if (project.embeddedDemo?.eligible) {
+    await db.update(regionTable).set({ selected: true, updatedAt: now() }).where(eq(regionTable.projectId, "current"));
+  }
+  const regions = project.embeddedDemo?.eligible ? await getRegions() : regionRows;
   const [researchRun] = project.activeResearchRunId ? await db.select().from(researchRuns).where(eq(researchRuns.id, project.activeResearchRunId)).limit(1) : [];
   if (!researchRun || researchRun.synthesisStatus !== "completed" || researchRun.status !== "quality_passed") throw new Error("Cross-region synthesis has not passed all automated quality gates.");
-  const selected = regions.filter((region) => region.selected);
+  const selected = regions.filter((region) => project.embeddedDemo?.eligible || region.selected);
   if (!selected.length) throw new Error("请至少选择一个发行区域。");
   if (selected.some((region) => region.status !== "quality_passed" || !region.analysis || region.analysis.differentiation?.provisional)) {
     throw new Error("所有选定区域审核通过后才能生成发行方案。");

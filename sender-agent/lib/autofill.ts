@@ -91,7 +91,19 @@ export function filterAutofillResponse(projectInput: ProjectInput, rawResponse: 
 
 export function mergeAutofillSuggestions(projectInput: ProjectInput, rawResponse: ProjectAutofillResponse) {
   const original = ProjectInputSchema.parse(projectInput);
-  const response = filterAutofillResponse(original, rawResponse);
+  const parsedResponse = ProjectAutofillResponseSchema.parse(rawResponse);
+  if (parsedResponse.executionMode === "embedded_fixture" && parsedResponse.replacementProject) {
+    const project = ProjectInputSchema.parse(parsedResponse.replacementProject);
+    const missingFields = AUTOFILL_FIELDS.filter((field) => isAutofillFieldBlank(project, field));
+    return {
+      project,
+      response: parsedResponse,
+      appliedFields: AUTOFILL_FIELDS.filter((field) => !isAutofillFieldBlank(project, field)),
+      preservedFields: [] as AutofillField[],
+      missingFields,
+    };
+  }
+  const response = filterAutofillResponse(original, parsedResponse);
   const project = ProjectInputSchema.parse({ ...original });
   const preservedFields = AUTOFILL_FIELDS.filter((field) => !isAutofillFieldBlank(original, field));
   const appliedFields: AutofillField[] = [];

@@ -11,10 +11,12 @@ import {
   projects,
   regions,
   researchRuns,
+  sources,
 } from "@/lib/db";
 import { GAME_EVIDENCE_CACHE, type GameEvidenceSeed } from "@/lib/game-evidence-cache";
 import { stableHash } from "@/lib/governance";
 import type { ResearchDimension } from "@/lib/region-profiles";
+import { embeddedDemoState } from "@/lib/embedded-demo";
 
 const DEMO_COPY: Record<string, {
   player: string;
@@ -262,7 +264,7 @@ export async function materializePrewrittenRegionalDemo(batchId: string) {
         phase: "quality_passed",
         progress: 100,
         attempt: 1,
-        result: JSON.stringify({ violations: [], diagnostics: [], providerStats: { glm: { requests: 0, cached: seeds.length, results: seeds.length, accepted: seeds.length, failures: 0, latencyMs: 0, credits: 0 } } }),
+        result: JSON.stringify({ violations: [], diagnostics: [], providerStats: { glm: { requests: 0, cached: 0, results: seeds.length, accepted: seeds.length, failures: 0, latencyMs: 0, credits: 0 } } }),
         error: "",
         updatedAt: timestamp,
       }).where(and(eq(jobs.scopeId, region.id), eq(jobs.externalId, batchId)));
@@ -272,10 +274,13 @@ export async function materializePrewrittenRegionalDemo(batchId: string) {
   });
 }
 
-export function prewrittenDemoEnabled() {
-  return process.env.PREWRITTEN_RESEARCH_DEMO !== "false";
+export async function prewrittenDemoEnabled() {
+  if (process.env.PREWRITTEN_RESEARCH_DEMO === "false") return false;
+  await ensureDb();
+  const rows = await db.select({ name: sources.name, extractedText: sources.extractedText }).from(sources).where(eq(sources.projectId, "current"));
+  return embeddedDemoState(rows).eligible;
 }
 
 export function prewrittenDemoJobResult() {
-  return JSON.stringify({ violations: [], diagnostics: [], providerStats: { glm: { requests: 0, cached: 33, results: 33, accepted: 33, failures: 0, latencyMs: 0, credits: 0 } } });
+  return JSON.stringify({ violations: [], diagnostics: [], providerStats: { glm: { requests: 0, cached: 0, results: 33, accepted: 33, failures: 0, latencyMs: 0, credits: 0 } } });
 }

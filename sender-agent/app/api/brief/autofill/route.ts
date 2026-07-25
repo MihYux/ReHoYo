@@ -2,6 +2,8 @@ import { generateProjectAutofill } from "@/lib/autofill-agent";
 import { ProjectInputSchema } from "@/lib/contracts";
 import { db, ensureDb, eq, sources } from "@/lib/db";
 import { apiError, ok } from "@/lib/http";
+import { embeddedDemoAutofillResponse } from "@/lib/embedded-demo-fixture";
+import { embeddedDemoState, waitForEmbeddedDemo } from "@/lib/embedded-demo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +18,11 @@ export async function POST(request: Request) {
       status: sources.status,
       extractedText: sources.extractedText,
     }).from(sources).where(eq(sources.projectId, "current"));
+
+    if (embeddedDemoState(sourceRows.map((source) => ({ name: source.name, extractedText: source.extractedText }))).eligible) {
+      await waitForEmbeddedDemo();
+      return ok(embeddedDemoAutofillResponse());
+    }
 
     const hasParsedText = sourceRows.some((source) => source.extractedText.trim().length > 0);
     if (!hasParsedText && !project.gameName.trim() && !project.versionName.trim()) {

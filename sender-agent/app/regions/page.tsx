@@ -74,8 +74,8 @@ export default function RegionsPage() {
   const activeBatchItem = batch?.items.find((item) => item.regionId === active?.id);
   const activeProviderStats = Object.values(activeBatchItem?.providerStats || {});
   const activeCachedCalls = activeProviderStats.reduce((sum, stats) => sum + (stats.cached || 0), 0);
-  const activeUsesCache = Boolean(batch?.demoCacheReplay || activeCachedCalls > 0);
-  const batchUsesCache = Boolean(batch?.demoCacheReplay || batch?.items.some((item) => Object.values(item.providerStats || {}).some((stats) => (stats.cached || 0) > 0)));
+  const activeUsesCache = batch?.executionMode !== "embedded_fixture" && Boolean(batch?.demoCacheReplay || activeCachedCalls > 0);
+  const batchUsesCache = batch?.executionMode !== "embedded_fixture" && Boolean(batch?.demoCacheReplay || batch?.items.some((item) => Object.values(item.providerStats || {}).some((stats) => (stats.cached || 0) > 0)));
 
   useEffect(() => {
     if (!activeId && selected[0]) setActiveId(selected[0].id);
@@ -318,7 +318,7 @@ export default function RegionsPage() {
               {batch?.status === "processing" && !batchUsesCache ? <span className="mono">联网检索与页面验证中</span> : null}
               {batch?.status === "failed" || (batch?.status === "completed" && !compare) ? <div className={styles.graphPipActions}>
                 {batch?.status === "failed" ? <button className="button button-cyan button-small" onClick={() => void retryBatch()} disabled={Boolean(busy)}><MagnifyingGlass size={14} /> 重试 {batch.failed} 个区域</button> : null}
-                {batch?.status === "completed" && !batch.demoCacheReplay ? <button className="button button-cyan button-small" onClick={() => void replayDemoCache()} disabled={Boolean(busy)}><MagnifyingGlass size={14} /> 25秒缓存演示</button> : null}
+                {batch?.status === "completed" && !batch.demoCacheReplay && batch.executionMode !== "embedded_fixture" ? <button className="button button-cyan button-small" onClick={() => void replayDemoCache()} disabled={Boolean(busy)}><MagnifyingGlass size={14} /> 25秒缓存演示</button> : null}
                 {batch?.status === "completed" && !compare ? <button className="button button-small" onClick={() => { setCompare(true); setComparisonView("matrix"); router.replace(`/regions?view=matrix&batch=${batch.id}#region-matrix`, { scroll: false }); document.getElementById("region-matrix")?.scrollIntoView({ behavior: "smooth" }); }}>查看差异矩阵</button> : null}
               </div> : null}
             </div>

@@ -175,8 +175,8 @@ export default function BriefPage() {
   const hasAutofillContext = data.sources.some((source) => source.extractedLength > 0)
     || Boolean(form.gameName.trim())
     || Boolean(form.versionName.trim());
-  const canAutofill = data.glm.configured && hasAutofillContext && !busy;
-  const autofillDisabledReason = !data.glm.configured
+  const canAutofill = (data.glm.configured || data.project.embeddedDemo?.eligible) && hasAutofillContext && !busy;
+  const autofillDisabledReason = !data.glm.configured && !data.project.embeddedDemo?.eligible
     ? "请先在连接设置中粘贴智谱 API Key"
     : !hasAutofillContext
       ? "请先上传可解析资料，或填写游戏名称或版本名称"

@@ -17,6 +17,7 @@ import {
   type SourceDocument,
 } from "@/lib/contracts";
 import { buildHumanContract, GOVERNANCE_VERSION, parseBudgetEnvelope, planningEvidenceCutoff } from "@/lib/governance";
+import { embeddedDemoState } from "@/lib/embedded-demo";
 import { claimEvidence, citations, evidenceDiscoveries, evidenceSnapshotDimensions, evidenceSnapshotRegions, evidenceSnapshots, evidenceSources, jobs, projects, regions, researchRuns, schemaMigrations, searchResultCache, sources } from "@/lib/db/schema";
 
 const dataDir = path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.DATA_DIR || ".data");
@@ -212,7 +213,10 @@ function json<T>(value: string | null | undefined, fallback: T): T {
 
 export async function getProject(): Promise<ProjectSnapshot> {
   await ensureDb();
-  const [row] = await db.select().from(projects).where(eq(projects.id, "current")).limit(1);
+  const [[row], sourceRows] = await Promise.all([
+    db.select().from(projects).where(eq(projects.id, "current")).limit(1),
+    db.select({ name: sources.name, extractedText: sources.extractedText }).from(sources).where(eq(sources.projectId, "current")),
+  ]);
   const input = ProjectInputSchema.parse({
     gameName: row.gameName,
     versionName: row.versionName,
@@ -243,6 +247,7 @@ export async function getProject(): Promise<ProjectSnapshot> {
     planStatus: row.planStatus as ProjectSnapshot["planStatus"],
     evidenceCutoff: input.evidenceMode === "campaign_cutoff" ? planningEvidenceCutoff(input.planningAsOfDate) : "",
     activeResearchRunId: row.activeResearchRunId,
+    embeddedDemo: embeddedDemoState(sourceRows),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

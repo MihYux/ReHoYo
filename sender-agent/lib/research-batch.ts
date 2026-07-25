@@ -12,6 +12,7 @@ import { GovernanceError, PROMPT_VERSION } from "@/lib/governance";
 import { computeRegionResearchFingerprint, executeRegionResearch, finalizeResearchRun, persistRegionResearch } from "@/lib/region-research";
 import { adaptResearchConcurrency, aggregateResearchBatch, researchRetryDelay } from "@/lib/research-scheduler";
 import { materializePrewrittenRegionalDemo, prewrittenDemoEnabled, prewrittenDemoJobResult } from "@/lib/prewritten-regional-demo";
+import { embeddedDemoDelayMs } from "@/lib/embedded-demo";
 
 type JobRow = typeof jobs.$inferSelect;
 type JobOutcome = { jobId: string; kind: "success" | "retry" | "failed"; pressure: boolean };
@@ -26,9 +27,6 @@ globalRuntime.__rehoyoResearchBatches = runtimes;
 const demoReplays = globalRuntime.__rehoyoDemoReplays || new Map<string, { sourceBatchId: string; startedAt: number; completesAt: number }>();
 globalRuntime.__rehoyoDemoReplays = demoReplays;
 const DEMO_ETA_SECONDS = process.env.NODE_ENV === "test" ? 0 : Math.max(0, Number(process.env.DEMO_SEARCH_ETA_SECONDS || 25));
-const PREWRITTEN_ETA_SECONDS = process.env.NODE_ENV === "test"
-  ? 0
-  : Math.max(20, Math.min(30, Number(process.env.DEMO_SEARCH_ETA_SECONDS || 30)));
 
 function now() {
   return new Date().toISOString();
@@ -119,13 +117,14 @@ export function kickResearchBatch(batchId: string) {
   const runtime: BatchRuntime = { promise: Promise.resolve(), limit: 2 };
   const promise = (async () => {
     await ensureDb();
-    if (prewrittenDemoEnabled()) {
+    if (await prewrittenDemoEnabled()) {
       const startedAt = Date.now();
+      const demoDelay = embeddedDemoDelayMs();
       await db.update(jobs).set({ status: "processing", phase: "searching", progress: 10, updatedAt: now() }).where(and(eq(jobs.type, "research"), eq(jobs.externalId, batchId)));
-      const firstStage = Math.max(0, PREWRITTEN_ETA_SECONDS * 500 - (Date.now() - startedAt));
+      const firstStage = Math.max(0, Math.floor(demoDelay * 0.5) - (Date.now() - startedAt));
       if (firstStage) await delay(firstStage);
       await db.update(jobs).set({ phase: "synthesizing", progress: 72, updatedAt: now() }).where(and(eq(jobs.type, "research"), eq(jobs.externalId, batchId)));
-      const finalStage = Math.max(0, PREWRITTEN_ETA_SECONDS * 1000 - (Date.now() - startedAt));
+      const finalStage = Math.max(0, demoDelay - (Date.now() - startedAt));
       if (finalStage) await delay(finalStage);
       await materializePrewrittenRegionalDemo(batchId);
       return;
@@ -181,6 +180,8 @@ export async function getResearchBatch(batchId: string): Promise<RegionResearchB
     .orderBy(jobs.createdAt);
   if (!rows.length) throw new Error("研究批次不存在。");
   const [run] = await db.select().from(researchRuns).where(eq(researchRuns.id, batchId)).limit(1);
+  let embeddedFixture = false;
+  try { embeddedFixture = Boolean(JSON.parse(run?.providerConfig || "{}").embeddedFixture); } catch { embeddedFixture = false; }
   const synthesisSettled = Boolean(run && run.synthesisStatus !== "pending");
   const items: RegionResearchBatchItem[] = rows.map(({ job, regionName, regionStatus }) => {
     let details: { diagnostics?: RegionResearchBatchItem["diagnostics"]; violations?: RegionResearchBatchItem["violations"]; providerStats?: RegionResearchBatchItem["providerStats"] } = {};
@@ -218,6 +219,7 @@ export async function getResearchBatch(batchId: string): Promise<RegionResearchB
     ...summary,
     activeConcurrency: runtimes.get(batchId)?.limit || Math.max(1, summary.processing),
     demoCacheReplay: isCacheReplay,
+    executionMode: embeddedFixture ? "embedded_fixture" : "live",
     etaSeconds: summary.status === "processing" && isCacheReplay ? Math.max(0, DEMO_ETA_SECONDS - elapsedSeconds) : 0,
     providers: searchProviderConfiguration(),
     synthesisStatus: (run?.synthesisStatus || "pending") as RegionResearchBatch["synthesisStatus"],
@@ -238,6 +240,7 @@ export async function createDemoResearchReplay(sourceBatchId: string) {
 
 export async function createResearchBatch() {
   await ensureDb();
+  const embeddedDemo = await prewrittenDemoEnabled();
   const [active] = await db.select().from(jobs).where(and(
     eq(jobs.type, "research"),
     or(eq(jobs.status, "queued"), eq(jobs.status, "processing")),
@@ -249,7 +252,7 @@ export async function createResearchBatch() {
   const regionRows = await db.select().from(regions).orderBy(regions.createdAt);
   if (!regionRows.length) throw new Error("没有可研究的发行区域。");
   const [currentProject] = await db.select().from(projects).where(eq(projects.id, "current")).limit(1);
-  if (currentProject?.activeResearchRunId && !prewrittenDemoEnabled()) {
+  if (currentProject?.activeResearchRunId && !embeddedDemo) {
     const previous = await db.select().from(jobs).where(and(eq(jobs.type, "research"), eq(jobs.externalId, currentProject.activeResearchRunId)));
     if (previous.length === regionRows.length) {
       const unchanged = await Promise.all(regionRows.map(async (region) => previous.find((job) => job.scopeId === region.id)?.inputFingerprint === await computeRegionResearchFingerprint(region.id)));
@@ -269,7 +272,7 @@ export async function createResearchBatch() {
       ? `${project.planningAsOfDate}T23:59:59.999Z`
       : "";
     if (project?.evidenceMode === "campaign_cutoff" && (!project.planningAsOfDate || !project.planningAsOfConfirmed)) throw new Error("The approved input has no confirmed data-freeze date.");
-    await tx.insert(researchRuns).values({ id: batchId, projectId: "current", batchId, evidenceMode: project?.evidenceMode || "campaign_cutoff", cutoffAt: cutoff, planningAsOfDate: project?.planningAsOfDate || "", promptVersion: PROMPT_VERSION, model: glmConfiguration().model, providerConfig: JSON.stringify(searchProviderConfiguration()), queryPlanVersion: providerQueryPlanVersion(), status: "processing", synthesisStatus: "pending", createdAt: timestamp, updatedAt: timestamp });
+    await tx.insert(researchRuns).values({ id: batchId, projectId: "current", batchId, evidenceMode: project?.evidenceMode || "campaign_cutoff", cutoffAt: cutoff, planningAsOfDate: project?.planningAsOfDate || "", promptVersion: PROMPT_VERSION, model: glmConfiguration().model, providerConfig: JSON.stringify(embeddedDemo ? { embeddedFixture: true } : searchProviderConfiguration()), queryPlanVersion: providerQueryPlanVersion(), status: "processing", synthesisStatus: "pending", createdAt: timestamp, updatedAt: timestamp });
     await tx.update(regions).set({ selected: true, updatedAt: timestamp });
     await tx.update(projects).set({ planStatus: "stale", activeResearchRunId: batchId, updatedAt: timestamp }).where(eq(projects.id, "current"));
     await tx.insert(jobs).values(regionRows.map((region) => ({
@@ -285,7 +288,7 @@ export async function createResearchBatch() {
       error: "",
       createdAt: timestamp,
       updatedAt: timestamp,
-      result: prewrittenDemoEnabled() ? prewrittenDemoJobResult() : "",
+      result: embeddedDemo ? prewrittenDemoJobResult() : "",
     })));
   });
   void kickResearchBatch(batchId);

@@ -160,6 +160,8 @@ export type AutofillModelOutput = z.infer<typeof AutofillModelOutputSchema>;
 export const ProjectAutofillResponseSchema = AutofillModelOutputSchema.extend({
   evidence: z.array(AutofillEvidenceSchema).max(100),
   toolTrace: z.array(AutofillToolTraceSchema).max(10),
+  executionMode: z.enum(["live", "embedded_fixture"]).optional(),
+  replacementProject: ProjectInputSchema.nullable().optional(),
 });
 export type ProjectAutofillResponse = z.infer<typeof ProjectAutofillResponseSchema>;
 
@@ -531,6 +533,7 @@ export type ProjectSnapshot = ProjectInput & {
   planningAsOfDate: string;
   planningAsOfConfirmed: boolean;
   activeResearchRunId: string;
+  embeddedDemo?: { eligible: boolean; fixtureVersion: string };
   createdAt: string;
   updatedAt: string;
 };
@@ -604,6 +607,7 @@ export type RegionResearchBatch = {
   synthesisStatus: "pending" | "provisional" | "completed" | "blocked";
   activeConcurrency: number;
   demoCacheReplay: boolean;
+  executionMode?: "live" | "embedded_fixture";
   etaSeconds: number;
   providers?: {
     glm: { configured: boolean; model: string };

@@ -54,7 +54,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             ? "stale"
             : "needs_review";
   const statuses: Record<(typeof nav)[number]["key"], WorkflowStatus> = {
-    settings: data?.glm.configured && data?.delivery.configured ? "quality_passed" : "needs_review",
+    settings: data?.glm?.configured && data?.delivery?.configured ? "quality_passed" : "needs_review",
     brief: data?.project.briefStatus || "draft",
     regions: regionStatus,
     plan: data?.project.planStatus || "draft",

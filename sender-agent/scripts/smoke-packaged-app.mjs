@@ -1,9 +1,13 @@
 import { spawn } from "node:child_process";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const executable = path.join(root, "release", "win-unpacked", "ReHoYo.exe");
+const unpackedRoot = path.join(root, "release", "win-unpacked");
+const executableName = (await readdir(unpackedRoot)).find((name) => name.toLowerCase().endsWith(".exe") && !["elevate.exe", "uninstall.exe"].includes(name.toLowerCase()));
+if (!executableName) throw new Error(`No packaged application executable found in ${unpackedRoot}.`);
+const executable = path.join(unpackedRoot, executableName);
 const child = spawn(executable, [], {
   cwd: path.dirname(executable),
   windowsHide: true,
