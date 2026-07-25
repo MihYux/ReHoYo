@@ -1,6 +1,6 @@
 <a id="top"></a>
 
-# 🔷 ReHoYo：全球发行智能工作台与三月七共生式桌宠
+# 🔷 ReHoYo：全球发行智能工作台与三月七发行式桌宠
 
 <p align="center">
   <img src="./website-worker/assests/rehoyo-logo.png" alt="ReHoYo 标志" width="520" />
