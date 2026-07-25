@@ -1,12 +1,13 @@
 # ReHoYo
 
-ReHoYo is now three independent products connected through a small Cloudflare Worker contract:
+ReHoYo consists of three independent products connected through a small Cloudflare Worker contract, plus a companion Orange Pi deployment:
 
 ```text
 ReHoYo/
 ├─ pet/             # player-facing desktop pet and its installer
 ├─ sender-agent/    # employee-only market research and policy publisher
-└─ website-worker/  # public website plus Workers + KV policy API
+├─ website-worker/  # public website plus Workers + KV policy API
+└─ hardware-pi/     # Orange Pi web deployment (Git submodule)
 ```
 
 The employee app researches a release, produces a region-specific behavior policy, and publishes the approved policy to Cloudflare KV. Each player's desktop pet checks `https://rehoyo.ccwu.cc/api/v1/pet-policy/:region`. An unchanged ETag returns `304`; a new version is validated, cached locally, and appended to the pet's system prompt.
@@ -34,9 +35,23 @@ The employee app researches a release, produces a region-specific behavior polic
 - Allows public read-only policy fetches and requires the `PUBLISH_TOKEN` secret for updates.
 - Uses the custom domain [rehoyo.ccwu.cc](https://rehoyo.ccwu.cc/).
 
+### `hardware-pi`
+
+- Companion web deployment for Orange Pi devices, maintained in [MihYux/hardware-pi](https://github.com/MihYux/hardware-pi).
+- Included as a Git submodule; it provides browser-based pet and workbench experiences without the Electron desktop shell.
+- See [`hardware-pi/README.md`](hardware-pi/README.md) for device requirements, deployment, configuration, and update instructions.
+
 ## Setup
 
 Node.js 24 is recommended.
+
+Clone the repository together with its hardware submodule, or initialize the submodule in an existing clone:
+
+```bash
+git clone --recurse-submodules https://github.com/MihYux/ReHoYo.git
+# Existing clone:
+git submodule update --init --recursive
+```
 
 ```bash
 npm run setup:all

@@ -1,0 +1,3 @@
+[submodule "hardware-pi"]
+	path = hardware-pi
+	url = https://github.com/MihYux/hardware-pi.git
