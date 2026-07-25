@@ -1,5 +1,7 @@
 # 三月七桌宠（Desktop March 7th）
 
+[返回仓库总览](../../README.md) · [阅读桌宠快速说明](../README.md)
+
 <p align="center">
   <img
     src="./public/assets/march7th-pet.png"
@@ -417,7 +419,7 @@ DEEPSEEK_API_KEY
 
 ### 当前默认配置
 
-配置文件位于 [`shared/cosyvoice-config.json`](./shared/cosyvoice-config.json)：
+配置文件位于 [`shared/cosyvoice-config.json`](../shared/cosyvoice-config.json)：
 
 ```json
 {
@@ -545,7 +547,7 @@ flowchart LR
 
 角色语气依据 [HeartEase1/March7th.Skill](https://github.com/HeartEase1/March7th.Skill) 蒸馏，并由共享提示词统一约束。
 
-提示词位于 [`shared/march7th-prompt.json`](./shared/march7th-prompt.json)，本地回复规则位于 [`src/character/march7th.ts`](./src/character/march7th.ts)。
+提示词位于 [`shared/march7th-prompt.json`](../shared/march7th-prompt.json)，本地回复规则位于 [`src/character/march7th.ts`](../src/character/march7th.ts)。
 
 ### 语言风格
 
@@ -704,12 +706,12 @@ sandbox: true
 更完整的说明与机器可读清单：
 
 - [隐私说明](./docs/PRIVACY.md)
-- [安全模型](./docs/SECURITY.md)
-- [素材与许可登记](./docs/ASSET_AND_LICENSE_REGISTER.md)
-- [平台与发布矩阵](./docs/PLATFORM_MATRIX.md)
-- [PRD 36 条验收矩阵](./docs/ACCEPTANCE_MATRIX.md)
-- [故障排查](./docs/TROUBLESHOOTING.md)
-- [发布检查表](./docs/RELEASE_CHECKLIST.md)
+- [安全模型](../docs/SECURITY.md)
+- [素材与许可登记](../docs/ASSET_AND_LICENSE_REGISTER.md)
+- [平台与发布矩阵](../docs/PLATFORM_MATRIX.md)
+- [PRD 36 条验收矩阵](../docs/ACCEPTANCE_MATRIX.md)
+- [故障排查](../docs/TROUBLESHOOTING.md)
+- [发布检查表](../docs/RELEASE_CHECKLIST.md)
 
 ## 配置参考
 
@@ -1068,10 +1070,10 @@ npm run all
 
 ### 代码许可
 
-除特别说明外，项目代码使用 [MIT License](./LICENSE)。
+除特别说明外，项目代码使用 [MIT License](../LICENSE)。
 
 March7th.Skill 的固定上游提交与完整 MIT notice 见
-[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
+[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
 
 ### 角色图与第三方知识产权
 
@@ -1090,7 +1092,7 @@ March7th.Skill 的固定上游提交与完整 MIT notice 见
 不要从本仓库、Issue 或 Pull Request 上传或分发原始 Live2D 文件、受限音频样本、临时 OSS 链接或第三方密钥。
 
 逐项素材状态和正式发布门禁见
-[素材与许可登记](./docs/ASSET_AND_LICENSE_REGISTER.md)。当前角色 PNG
+[素材与许可登记](../docs/ASSET_AND_LICENSE_REGISTER.md)。当前角色 PNG
 仍被明确标记为“内部开发可用、正式公开/商业分发前必须归档权利依据”，不能因为代码使用 MIT 就推断角色视觉也获得同样许可。
 
 ### 复刻声音
@@ -1105,7 +1107,7 @@ March7th.Skill 的固定上游提交与完整 MIT notice 见
 ## 后续计划
 
 完整路线、验收矩阵和风险清单见
-[`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md)。
+[`docs/IMPLEMENTATION_PLAN.md`](../docs/IMPLEMENTATION_PLAN.md)。
 
 当前成品基线的核心功能、IPC 契约、可访问性基础和交付文档已经完成。下一步优先关闭正式发布门禁：
 
