@@ -1,9 +1,13 @@
 <a id="top"></a>
 
-# 🔷 ReHoYo：发行方案agent+角色共生式发行系统
+<h1 align="center">🔷 ReHoYo：全球发行智能工作台与三月七共生式桌宠</h1>
 
 <p align="center">
   <img src="./website-worker/assests/rehoyo-logo.png" alt="ReHoYo 标志" width="520" />
+</p>
+
+<p align="center">
+  <strong>从全球发行研究与分区域决策，到三月七角色共生式触达的一体化智能发行系统</strong>
 </p>
 
 <p align="center">
@@ -47,7 +51,7 @@
 
 ## 🩵 产品概览
 
-ReHoYo 是一套面向游戏全球发行的完整产品：员工侧工作台负责版本理解、区域研究、发行方案和角色发行；玩家侧三月七桌宠负责在授权、安全和频率约束下接收区域策略并自然互动；Cloudflare Worker 负责网站、策略 API 与实时发行广播；Hardware Pi 提供 Orange Pi 网页部署方案。
+ReHoYo 由“全球发行智能工作台”和“三月七共生式桌宠”两部分组成。员工侧工作台负责版本理解、区域研究、分区域发行方案、角色共生方案和安全发布；玩家侧桌宠负责在授权、安全与频率约束下接收区域策略，并以三月七的角色视角自然互动。Cloudflare Worker 为两端提供策略 API 与实时发行广播，Hardware Pi 则提供适用于 Orange Pi 的网页部署方式。
 
 ```text
 版本资料 → Sender Agent → 分区域方案 / 角色共生方案
