@@ -154,13 +154,19 @@ class RealtimeReleaseSync {
       const raw = await response.text();
       if (Buffer.byteLength(raw, "utf8") > MAX_BATCH_BYTES) throw new Error("Realtime release batch is too large.");
       const batch = validateReleaseBatch(JSON.parse(raw));
-      const changed = this.cache?.batch?.batchId !== batch.batchId || this.cache?.batch?.checksum !== batch.checksum;
+      const previous = this.cache;
+      const changed = previous?.batch?.batchId !== batch.batchId || previous?.batch?.checksum !== batch.checksum;
       this.cache = {
         schemaVersion: 1,
-        etag: response.headers.get("etag") || `"${batch.checksum}"`,
+        // Cloudflare may expose a weak representation ETag after compression.
+        // The Worker compares the canonical checksum ETag, so always send that.
+        etag: `"${batch.checksum}"`,
         fetchedAt: new Date().toISOString(),
         batch,
-        ...(changed ? {} : this.cache?.processedAt ? { processedAt: this.cache.processedAt } : {}),
+        ...(changed ? {} : previous?.processedAt ? {
+          processedAt: previous.processedAt,
+          ...(previous.outcome ? { outcome: previous.outcome } : {}),
+        } : {}),
       };
       atomicWrite(this.cachePath, this.cache);
       if (changed || !this.cache.processedAt) await this.#applyCurrent({ changed, source: "network" });

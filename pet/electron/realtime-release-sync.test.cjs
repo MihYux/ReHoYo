@@ -73,6 +73,30 @@ test("atomically caches and processes each changed batch once", async (context) 
   assert.ok(cache.processedAt);
 });
 
+test("uses the canonical checksum ETag and preserves terminal outcome across an unchanged 200 response", async (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "rehoyo-realtime-etag-"));
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const value = releaseBatch("delivery-etag");
+  const requestEtags = [];
+  let applied = 0;
+  const sync = new RealtimeReleaseSync({
+    cachePath: path.join(root, "cache.json"),
+    getProfile: () => ({ id: "profile-secret", region: "japan" }),
+    onBatch: async () => { applied += 1; return { stage: "degraded", reasonCode: "provider_unavailable" }; },
+    fetchImpl: async (_url, init) => {
+      requestEtags.push(init.headers["if-none-match"] || "");
+      return new Response(JSON.stringify(value), { status: 200, headers: { etag: `W/"${value.checksum}"` } });
+    },
+    webSocketFactory: () => new FakeSocket("unused"),
+  });
+  await sync.sync();
+  await sync.sync();
+  const cache = JSON.parse(fs.readFileSync(path.join(root, "cache.json"), "utf8"));
+  assert.equal(requestEtags[1], `"${value.checksum}"`);
+  assert.deepEqual(cache.outcome, { stage: "degraded", reasonCode: "provider_unavailable" });
+  assert.equal(applied, 1);
+});
+
 test("reacts to a WebSocket notice immediately and reports anonymous receipt stages", async (context) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "rehoyo-realtime-socket-"));
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
