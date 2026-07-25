@@ -51,7 +51,8 @@ contextBridge.exposeInMainWorld("marchDesktop", {
         companionDataListener,
       );
     }
-    companionDataListener = (_event, data) => callback(data);
+    companionDataListener = (_event, data, delivery) =>
+      callback(data, delivery);
     ipcRenderer.on("companion:data-updated", companionDataListener);
   },
   clearCompanionDataChangeListener: () => {

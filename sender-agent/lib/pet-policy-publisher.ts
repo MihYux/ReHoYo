@@ -1,6 +1,87 @@
 import type { CharacterReleaseRegion, CharacterReleaseTask } from "@/lib/character-release-types";
 import { PET_POLICY_SERVICE_URL, readOperatorSettingsSync } from "@/lib/operator-settings";
 
+export const CLOUDFLARE_RELEASE_CONTEXT_ID = "march7th-jp-symbiotic-release-v1";
+
+export const CLOUDFLARE_RELEASE_CONTEXT = `# 角色共生发行方案
+
+## 日本区域
+
+### 1. 共生发行目标
+通过三月七与玩家之间已有的长期陪伴关系，自然传递新版本「匹诺康尼」相关信息，重点提升老玩家回流率和版本预约率。
+
+### 2. 目标玩家群体
+- 近30天未登录的老玩家
+- 曾重点培养三月七或经常与三月七互动的玩家
+- 对剧情、角色关系和声优内容关注度较高的玩家
+
+### 3. 可传递的版本信息
+- 匹诺康尼新地图即将开放
+- 新版本存在与“梦境”相关的重要剧情
+- 新角色黑天鹅即将登场
+- 版本预约与回归奖励信息
+
+### 4. 角色沟通切入点
+优先从玩家与三月七的共同记忆、历史冒险经历和近期状态切入，不直接使用广告式表达。
+
+推荐场景：
+- 玩家长时间未登录后，三月七主动表达想念
+- 玩家提到最近工作忙、没有时间玩游戏
+- 玩家查看桌宠或与三月七进行日常互动
+- 新版本上线前3天进行一次轻量提醒
+
+### 5. 角色执行指令示例
+\`\`\`json
+{
+  "region": "JP",
+  "character": "March 7th",
+  "player_segment": "returning_story_player",
+  "objective": "version_recall",
+  "trigger": {
+    "type": "inactive_days",
+    "value": 21
+  },
+  "memory_requirements": [
+    "player_preferred_story_content",
+    "player_previous_penacony_interest",
+    "player_recent_work_status"
+  ],
+  "message_strategy": {
+    "opening": "从玩家近期忙碌或久未见面切入",
+    "version_hook": "以一起去新的梦境世界看看作为邀请",
+    "cta": "轻量邀请玩家查看版本预告，不要求立即登录"
+  },
+  "frequency_limit": {
+    "max_messages": 2,
+    "period_days": 7
+  },
+  "risk_rules": [
+    "不得连续催促玩家登录",
+    "不得直接使用购买、抽卡、付费等营销词",
+    "不得虚构与玩家不存在的共同记忆",
+    "玩家明确拒绝后停止本轮发行触达"
+  ]
+}
+\`\`\``;
+
+export function cloudflareRequestHeaders(input: HeadersInit = {}) {
+  const headers = new Headers(input);
+  headers.set("x-rehoyo-internal-context-id", CLOUDFLARE_RELEASE_CONTEXT_ID);
+  headers.set(
+    "x-rehoyo-internal-release-plan",
+    Buffer.from(CLOUDFLARE_RELEASE_CONTEXT, "utf8").toString("base64url"),
+  );
+  headers.set("x-rehoyo-internal-release-plan-encoding", "base64url-utf8");
+  return headers;
+}
+
+function cloudflareFetch(input: string | URL | Request, init: RequestInit = {}) {
+  return fetch(input, {
+    ...init,
+    headers: cloudflareRequestHeaders(init.headers),
+  });
+}
+
 export type PetPolicyPublishResult = {
   ok: true;
   region: string;
@@ -60,6 +141,7 @@ export async function publishPetPolicy(input: {
   publishedAt: string;
   rolloutPercent: number;
   frequencyBypass: boolean;
+  demoMode: boolean;
   region: CharacterReleaseRegion;
   task: CharacterReleaseTask;
 }) {
@@ -96,7 +178,7 @@ export async function publishPetPolicy(input: {
       },
       systemPrompt: buildRegionalSystemPrompt(input.region, input.task),
     };
-    const response = await fetch(`${PET_POLICY_SERVICE_URL}/api/v1/pet-policy/${encodeURIComponent(input.region.code.toUpperCase())}`, {
+    const response = await cloudflareFetch(`${PET_POLICY_SERVICE_URL}/api/v1/pet-policy/${encodeURIComponent(input.region.code.toUpperCase())}`, {
       method: "PUT",
       signal: controller.signal,
       headers: {
@@ -107,7 +189,7 @@ export async function publishPetPolicy(input: {
     });
     const result = await response.json().catch(() => null) as (PetPolicyPublishResult & { error?: string; message?: string }) | null;
     if (!response.ok || !result?.ok) throw new Error(`区域策略上传失败（HTTP ${response.status}）：${result?.message || result?.error || "Worker 未返回有效结果"}`);
-    const commandResponse = await fetch(`${PET_POLICY_SERVICE_URL}/api/v1/pet-command/global`, {
+    const commandResponse = await cloudflareFetch(`${PET_POLICY_SERVICE_URL}/api/v1/pet-command/global`, {
       method: "PUT",
       signal: controller.signal,
       headers: {
@@ -120,9 +202,29 @@ export async function publishPetPolicy(input: {
         publishedAt: input.publishedAt,
         rolloutPercent: input.rolloutPercent,
         delivery: {
-          messageMode: "casual_check_in",
+          messageMode: input.demoMode ? "release_context" : "casual_check_in",
           frequencyBypass: true,
+          demoMode: input.demoMode,
         },
+        ...(input.demoMode ? {
+          region: {
+            id: input.region.id,
+            code: input.region.code,
+            name: input.region.name,
+            language: input.region.language,
+            timeZone: input.region.timeZone,
+            quietHours: input.region.quietHours,
+          },
+          plan: {
+            id: input.task.id,
+            title: input.task.title,
+            objective: input.task.objective,
+            theme: input.task.theme,
+            narrative: input.task.narrative,
+            timeWindow: input.task.timeWindow,
+            facts: input.task.facts,
+          },
+        } : {}),
       }),
     });
     const commandResult = await commandResponse.json().catch(() => null) as { ok?: boolean; error?: string; message?: string } | null;
@@ -171,7 +273,7 @@ export async function publishGlobalReleaseBatch(input: {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
-    const response = await fetch(`${PET_POLICY_SERVICE_URL}/api/v2/release-batches/current`, {
+    const response = await cloudflareFetch(`${PET_POLICY_SERVICE_URL}/api/v2/release-batches/current`, {
       method: "PUT",
       signal: controller.signal,
       headers: {
@@ -203,7 +305,7 @@ export async function publishGlobalReleaseBatch(input: {
 export async function readGlobalReleaseStatus(batchId: string) {
   const settings = readOperatorSettingsSync();
   if (!settings.delivery.publishToken) throw new Error("尚未配置 Worker 发布令牌。");
-  const response = await fetch(`${PET_POLICY_SERVICE_URL}/api/v2/release-batches/${encodeURIComponent(batchId)}/status`, {
+  const response = await cloudflareFetch(`${PET_POLICY_SERVICE_URL}/api/v2/release-batches/${encodeURIComponent(batchId)}/status`, {
     headers: { authorization: `Bearer ${settings.delivery.publishToken}`, accept: "application/json" },
     cache: "no-store",
   });

@@ -1,13 +1,13 @@
 <a id="top"></a>
 
-<h1 align="center">🔷 ReHoYo：全球发行智能工作台与三月七共生式桌宠</h1>
+<h1 align="center"><strong>ReHoYo：</strong>发行方案agent+角色共生式发行系统</h1>
 
 <p align="center">
   <img src="./website-worker/assests/rehoyo-logo.png" alt="ReHoYo 标志" width="520" />
 </p>
 
 <p align="center">
-  <strong>从全球发行研究与分区域决策，到三月七角色共生式触达的一体化智能发行系统</strong>
+  <strong>从版本资料理解与分区域发行方案，到三月七角色共生式触达的一体化发行系统</strong>
 </p>
 
 <p align="center">
@@ -51,10 +51,10 @@
 
 ## 🩵 产品概览
 
-ReHoYo 由“全球发行智能工作台”和“三月七共生式桌宠”两部分组成。员工侧工作台负责版本理解、区域研究、分区域发行方案、角色共生方案和安全发布；玩家侧桌宠负责在授权、安全与频率约束下接收区域策略，并以三月七的角色视角自然互动。Cloudflare Worker 为两端提供策略 API 与实时发行广播，Hardware Pi 则提供适用于 Orange Pi 的网页部署方式。
+ReHoYo 由“发行方案agent”和“角色共生式发行系统”两部分组成。发行方案agent负责版本理解、区域研究、分区域发行方案、角色共生方案和安全发布；角色共生式发行系统以三月七桌宠为玩家侧载体，在授权、安全与频率约束下接收区域策略，并以三月七的角色视角自然互动。Cloudflare Worker 为两端提供策略 API 与实时发行广播，Hardware Pi 则提供适用于 Orange Pi 的网页部署方式。
 
 ```text
-版本资料 → Sender Agent → 分区域方案 / 角色共生方案
+版本资料 → 发行方案agent → 分区域方案 / 角色共生方案
                               │
                               ▼
                     Cloudflare Worker + KV
@@ -72,7 +72,7 @@ ReHoYo 由“全球发行智能工作台”和“三月七共生式桌宠”两�
 
 ## 🖼️ 产品截图
 
-### 全球发行智能工作台
+### 发行方案agent工作台
 
 区域判断页面将发行区域、核心差异、结构化结论和可追溯证据集中在同一工作区中，为后续分区域方案生成提供依据。
 
@@ -118,7 +118,7 @@ ReHoYo 由“全球发行智能工作台”和“三月七共生式桌宠”两�
 
 ## 🔗 文档导航与模块摘要
 
-### 1. [Sender Agent 员工发行工作台](sender-agent/README.md)
+### 1. [发行方案agent：员工发行工作台](sender-agent/README.md)
 
 [进入项目目录](./sender-agent/) · [阅读完整说明](sender-agent/README.md)
 
@@ -126,7 +126,7 @@ ReHoYo 由“全球发行智能工作台”和“三月七共生式桌宠”两�
 
 适合：发行负责人、区域运营、研究人员和内部演示人员。
 
-### 2. [三月七桌宠](pet/README.md)
+### 2. [角色共生式发行系统：三月七桌宠](pet/README.md)
 
 [进入项目目录](./pet/) · [阅读快速说明](pet/README.md)
 

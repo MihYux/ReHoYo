@@ -1,8 +1,11 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
+  PLAYER_REPLY_MAX_CHARACTERS,
+  constrainPlayerVisibleReply,
   evaluateChatInput,
   reviewCharacterOutput,
+  splitPlayerVisibleSentences,
 } = require("./content-safety.cjs");
 
 test("blocks prompt extraction without sending it to a model", () => {
@@ -63,6 +66,17 @@ test("accepts a short safe March 7th reply", () => {
   );
   assert.equal(result.allowed, true);
   assert.equal(result.ruleIds.length, 0);
+});
+
+test("hard-limits every player-visible model reply to three short sentences", () => {
+  const original =
+    "嘿，难得你这么爽快！那咱就从一个很神秘的人说起吧，她总让人觉得捉摸不透。咱还拍了好多照片，等会儿给你看看。梦境里也藏着不少奇妙景色。还有很多事情想慢慢告诉你。";
+  const result = reviewCharacterOutput(original);
+  assert.equal(result.allowed, false);
+  assert.ok(result.ruleIds.includes("reply_length_compacted"));
+  assert.ok(result.safeText.length <= PLAYER_REPLY_MAX_CHARACTERS);
+  assert.ok(splitPlayerVisibleSentences(result.safeText).length <= 3);
+  assert.equal(result.safeText, constrainPlayerVisibleReply(original));
 });
 
 test("blocks machine metadata from player-visible output", () => {

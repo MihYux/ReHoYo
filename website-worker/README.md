@@ -1,6 +1,6 @@
-# ReHoYo 网站与 Cloudflare Worker
+# **ReHoYo：**发行方案agent+角色共生式发行系统 · 网站与 Cloudflare Worker
 
-该模块使用 React、Vite、Cloudflare Workers、KV 和 Durable Objects 提供公开展示网站、区域桌宠策略 API、全局命令与实时发行广播。
+该模块使用 React、Vite、Cloudflare Workers、KV 和 Durable Objects，连接发行方案agent与角色共生式发行系统，并提供公开展示网站、区域桌宠策略 API、全局命令与实时发行广播。
 
 [返回仓库总览](../README.md) · [查看员工工作台](../sender-agent/README.md) · [查看三月七桌宠](../pet/README.md)
 

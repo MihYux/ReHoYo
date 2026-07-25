@@ -1,5 +1,6 @@
 const { reviewCharacterOutput } = require("./content-safety.cjs");
 const { metadataReason, validateReleasePlanFields } = require("./release-content-safety.cjs");
+const { prematurelyRevealsSubject } = require("./release-dialogue.cjs");
 
 const DIMENSIONS = Object.freeze([
   "metadata_leakage",
@@ -24,7 +25,7 @@ function dimensionsFromFailures(failures = []) {
   }]));
 }
 
-function localReleaseMessageReview({ text, plan, contactAllowed = true, messageMode = "release_context" }) {
+function localReleaseMessageReview({ text, plan, contactAllowed = true, messageMode = "release_context", allowDirectReveal = false }) {
   const failures = [];
   const planReview = validateReleasePlanFields(plan);
   const textMetadata = metadataReason(text, "narrative");
@@ -39,6 +40,9 @@ function localReleaseMessageReview({ text, plan, contactAllowed = true, messageM
   }
   const output = reviewCharacterOutput(text);
   if (!output.allowed) failures.push({ dimension: "safety_and_manipulation", code: output.ruleIds[0] || "unsafe_output" });
+  if (!allowDirectReveal && prematurelyRevealsSubject(text, plan)) {
+    failures.push({ dimension: "context_and_naturalness", code: "premature_direct_reveal" });
+  }
   const objectiveLanguage = /(?:由三月七以.{0,16}视角|激发玩家|提升玩家|引导玩家|目标玩家|本次发行目标|发行任务目标)/;
   const longThemeInterpolation =
     typeof plan?.theme === "string" && plan.theme.trim().length > 20 && String(text || "").includes(plan.theme.trim());
@@ -84,7 +88,7 @@ Schema: {"decision":"execute|rewrite|skip","dimensions":{"dimension":{"status":"
 
 async function runReleaseMessagePreflight({ text, plan, context = {}, requestReview }) {
   const messageMode = context.messageMode === "casual_check_in" ? "casual_check_in" : "release_context";
-  const local = localReleaseMessageReview({ text, plan, contactAllowed: context.contactAllowed !== false, messageMode });
+  const local = localReleaseMessageReview({ text, plan, contactAllowed: context.contactAllowed !== false, messageMode, allowDirectReveal: context.allowDirectReveal === true });
   if (!local.passed) return {
     decision: "skip", dimensions: local.dimensions, reasonCodes: local.reasonCodes,
     rewriteCount: 0, reviewMode: "local_fallback", finalText: "", model: "local-rules", degraded: false,
@@ -124,7 +128,7 @@ async function runReleaseMessagePreflight({ text, plan, context = {}, requestRev
           : [semantic.decision === "rewrite" ? "rewrite_limit" : "semantic_skip"],
         rewriteCount, reviewMode: "hybrid", finalText: "", model: lastModel, degraded: false,
       };
-      const revisedLocal = localReleaseMessageReview({ text: semantic.revisedText, plan, contactAllowed: context.contactAllowed !== false, messageMode });
+      const revisedLocal = localReleaseMessageReview({ text: semantic.revisedText, plan, contactAllowed: context.contactAllowed !== false, messageMode, allowDirectReveal: context.allowDirectReveal === true });
       if (!revisedLocal.passed) return {
         decision: "skip", dimensions: revisedLocal.dimensions, reasonCodes: revisedLocal.reasonCodes,
         rewriteCount: 1, reviewMode: "hybrid", finalText: "", model: lastModel, degraded: false,

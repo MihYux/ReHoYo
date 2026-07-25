@@ -10,7 +10,11 @@ function validateCommand(value) {
   if (typeof value.commandVersion !== "string" || !value.commandVersion.trim()) throw new Error("Global command version is missing.");
   if (typeof value.publishedAt !== "string" || !Number.isFinite(Date.parse(value.publishedAt))) throw new Error("Global command publish time is invalid.");
   if (!Number.isInteger(value.rolloutPercent) || value.rolloutPercent < 1 || value.rolloutPercent > 100) throw new Error("Global command rollout is invalid.");
-  if (value.delivery?.messageMode !== "casual_check_in" || value.delivery?.frequencyBypass !== true) throw new Error("Global command delivery is invalid.");
+  const demoMode = value.delivery?.demoMode === true;
+  const messageMode = value.delivery?.messageMode;
+  const compatibleMessageMode = messageMode === "casual_check_in" || (demoMode && messageMode === "release_context");
+  if (!compatibleMessageMode || value.delivery?.frequencyBypass !== true || (value.delivery.demoMode !== undefined && typeof value.delivery.demoMode !== "boolean")) throw new Error("Global command delivery is invalid.");
+  if (messageMode === "release_context" && (!value.region || !value.plan || !Array.isArray(value.plan.facts))) throw new Error("Global demo command release context is invalid.");
   if (typeof value.checksum !== "string" || !/^[a-f0-9]{64}$/.test(value.checksum)) throw new Error("Global command checksum is invalid.");
   const { checksum, ...unsigned } = value;
   const actual = crypto.createHash("sha256").update(JSON.stringify(unsigned)).digest("hex");
@@ -30,14 +34,14 @@ class RemoteCommandSync {
     cachePath,
     onCommand,
     url = DEFAULT_COMMAND_URL,
-    intervalMs = 60_000,
+    intervalMs = 5_000,
     fetchImpl = globalThis.fetch,
   }) {
     if (!cachePath || typeof onCommand !== "function" || typeof fetchImpl !== "function") throw new Error("Remote command sync is not configured.");
     this.cachePath = cachePath;
     this.onCommand = onCommand;
     this.url = String(url);
-    this.intervalMs = Math.max(60_000, Number(intervalMs) || 60_000);
+    this.intervalMs = Math.max(5_000, Number(intervalMs) || 5_000);
     this.fetchImpl = fetchImpl;
     this.timer = undefined;
     this.syncing = false;

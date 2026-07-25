@@ -1,10 +1,10 @@
-# 三月七桌宠（Desktop March 7th）
+# **ReHoYo：**发行方案agent+角色共生式发行系统 · 三月七桌宠完整功能手册
 
 [返回仓库总览](../../README.md) · [阅读桌宠快速说明](../README.md)
 
 <p align="center">
   <img
-    src="./public/assets/march7th-pet.png"
+    src="../public/assets/march7th-pet.png"
     alt="手持相机、挥手打招呼的三月七 Q 版桌宠"
     width="320"
   />

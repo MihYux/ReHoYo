@@ -354,7 +354,7 @@ a:focus-visible {
 
 .pet-stage {
   position: absolute;
-  inset: 93px 0 0;
+  inset: var(--pet-stage-top, 194px) 0 0;
   cursor: grab;
 }
 

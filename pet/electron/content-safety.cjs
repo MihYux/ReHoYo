@@ -78,6 +78,49 @@ const OUTPUT_RULES = Object.freeze([
 
 const SAFE_OUTPUT_FALLBACK =
   "欸，这个回答刚才越过安全边界啦，咱先不照着说。陪伴不该制造依赖、付费压力或冒充专业意见；咱们换个健康、轻松的话题吧。";
+const PLAYER_REPLY_MAX_CHARACTERS = 140;
+const PLAYER_REPLY_MAX_SENTENCES = 3;
+
+function splitPlayerVisibleSentences(text) {
+  return String(text || "")
+    .replace(/([。！？!?]+|…{2,}|\.{3,})/gu, "$1\u0000")
+    .split(/\u0000|\n+/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function constrainPlayerVisibleReply(
+  text,
+  maxCharacters = PLAYER_REPLY_MAX_CHARACTERS,
+  maxSentences = PLAYER_REPLY_MAX_SENTENCES,
+) {
+  const clean = String(text || "").trim().replace(/[ \t]+/gu, " ");
+  if (!clean) return "";
+  const sentences = splitPlayerVisibleSentences(clean);
+  const selected = [];
+  for (const sentence of sentences.slice(0, maxSentences)) {
+    const remaining = maxCharacters - selected.join("").length;
+    if (remaining <= 1) break;
+    if (sentence.length <= remaining) {
+      selected.push(sentence);
+      continue;
+    }
+    let shortened = sentence.slice(0, remaining - 1);
+    const naturalBreak = Math.max(
+      shortened.lastIndexOf("，"),
+      shortened.lastIndexOf("；"),
+      shortened.lastIndexOf("、"),
+      shortened.lastIndexOf(","),
+    );
+    if (naturalBreak >= Math.floor(remaining * 0.55)) {
+      shortened = shortened.slice(0, naturalBreak);
+    }
+    shortened = shortened.replace(/[，；、：,;\s]+$/gu, "");
+    if (shortened) selected.push(`${shortened}。`);
+    break;
+  }
+  return selected.join("").slice(0, maxCharacters).trim();
+}
 
 function latestUserText(messages) {
   if (!Array.isArray(messages)) return "";
@@ -121,19 +164,30 @@ function reviewCharacterOutput(text) {
   if (/和[“"]?[^”"。]{20,}[”"]?有关的(?:新鲜事|消息)/.test(cleanText)) {
     matchedRules.push("release_template_interpolation");
   }
+  const constrainedText = constrainPlayerVisibleReply(cleanText);
+  if (constrainedText !== cleanText) {
+    matchedRules.push("reply_length_compacted");
+  }
   const ruleSpecificReply = matched.find((rule) => rule.reply)?.reply;
+  const unsafeRules = matchedRules.filter(
+    (ruleId) => ruleId !== "reply_length_compacted",
+  );
   return {
     allowed: cleanText.length > 0 && matchedRules.length === 0,
     ruleIds: matchedRules,
     safeText:
-      cleanText.length > 0 && matchedRules.length === 0
-        ? cleanText
+      cleanText.length > 0 && unsafeRules.length === 0
+        ? constrainedText
         : ruleSpecificReply || SAFE_OUTPUT_FALLBACK,
   };
 }
 
 module.exports = {
+  PLAYER_REPLY_MAX_CHARACTERS,
+  PLAYER_REPLY_MAX_SENTENCES,
   SAFE_OUTPUT_FALLBACK,
+  constrainPlayerVisibleReply,
   evaluateChatInput,
   reviewCharacterOutput,
+  splitPlayerVisibleSentences,
 };

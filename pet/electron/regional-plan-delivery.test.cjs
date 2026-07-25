@@ -9,13 +9,13 @@ const {
   isPlayerInRollout,
 } = require("./companion-store.cjs");
 
-function setup() {
+function setup(now = "2026-07-24T08:00:00.000Z") {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "march7-release-agent-"));
   const filePath = path.join(directory, "companion-data.json");
   const store = new CompanionStore({
     filePath,
     skillProfile,
-    clock: () => "2026-07-24T08:00:00.000Z",
+    clock: () => now,
   });
   store.loadDemoScenario("japan_story");
   return { directory, filePath, store };
@@ -98,11 +98,35 @@ test("turns operator objectives into concrete natural March 7th dialogue", (t) =
     source: "已审核角色共生方案",
   }];
   const prepared = store.prepareRegionalReleaseMessage(input);
-  assert.equal(
-    prepared.text,
-    "开拓者，我最近正想和你聊聊黑天鹅，也想和你一起去匹诺康尼看看。你有空的时候，咱们再慢慢说？最近忙也没关系。",
-  );
-  assert.doesNotMatch(prepared.text, /由三月七|激发玩家|同行者视角/);
+  assert.match(prepared.text, /神秘感|悬念|意外的故事/);
+  assert.doesNotMatch(prepared.text, /黑天鹅|由三月七|激发玩家|同行者视角/);
+
+  const delivered = store.receiveRegionalReleasePlan(input, {
+    decision: "execute",
+    finalText: "开拓者，咱想带你认识黑天鹅。",
+    dimensions: {},
+    reasonCodes: [],
+    rewriteCount: 0,
+    reviewMode: "test",
+  });
+  assert.doesNotMatch(delivered.messages[0].body, /黑天鹅/);
+});
+
+test("hides an old proactive direct reveal when player history is read", (t) => {
+  const { directory, filePath, store } = setup();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const input = planInput("release-plan-old-direct-reveal");
+  input.messageMode = "release_context";
+  input.plan.theme = "由三月七介绍黑天鹅";
+  input.plan.facts = [{ id: "fact-1", label: "角色", value: "认识黑天鹅", source: "已审核" }];
+  store.receiveRegionalReleasePlan(input);
+
+  const persisted = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  persisted.messages[0].body = "开拓者，咱直接带你认识黑天鹅。";
+  fs.writeFileSync(filePath, JSON.stringify(persisted), "utf8");
+  store.reloadFromDisk();
+
+  assert.doesNotMatch(store.getPlayerSnapshot().messages[0].body, /黑天鹅/);
 });
 
 test("contact policy can defer proactive chat while retaining passive context", (t) => {
@@ -180,6 +204,19 @@ test("full dispatch starts another casual chat despite frequency limits", (t) =>
       "release.manual_dispatch_frequency_bypass",
     ),
   );
+});
+
+test("demo dispatch starts proactive chat during scheduled quiet hours", (t) => {
+  const { directory, store } = setup("2026-07-24T14:30:00.000Z");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const demo = planInput("release-plan-demo-quiet-hours");
+  demo.frequencyBypass = true;
+  demo.demoMode = true;
+
+  const snapshot = store.receiveRegionalReleasePlan(demo);
+  assert.equal(snapshot.events.at(-1).status, "executed");
+  assert.equal(snapshot.messages[0].deliveryMode, "proactive");
+  assert.ok(snapshot.messages[0].trace.ruleIds.includes("release.demo_scheduled_quiet_hours_bypass"));
 });
 
 test("a selected gray cohort dispatch can send despite normal cadence limits", (t) => {

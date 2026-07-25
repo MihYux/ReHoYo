@@ -73,6 +73,11 @@ class ReleaseSkillLoader {
     return this.lastGood?.body ?? "";
   }
 
+  getFreshPrompt() {
+    this.reload();
+    return this.getPrompt();
+  }
+
   getSnapshot() {
     return {
       ...(this.lastGood ?? {}),

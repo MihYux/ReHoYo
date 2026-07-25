@@ -62,7 +62,13 @@ declare global {
       onNavigate: (callback: (route: DesktopRoute) => void) => void;
       clearNavigateListener: () => void;
       onCompanionDataChange: (
-        callback: (data: CompanionData) => void,
+        callback: (
+          data: CompanionData,
+          delivery?: {
+            source: "cloudflare";
+            messageId: string;
+          } | null,
+        ) => void,
       ) => void;
       clearCompanionDataChangeListener: () => void;
       service: {

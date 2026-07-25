@@ -17,6 +17,9 @@ const markdown = `# 崩坏：星穹铁道 · 2.0 · 角色共生发行方案
 
 由三月七以同行者视角介绍黑天鹅，激发玩家对匹诺康尼的兴趣。
 
+### 目标玩家群体
+- 近30天未登录的老玩家
+
 ### 可传递的版本信息
 - 匹诺康尼是全新世界大版本，含梦境都市与新主线悬念。
 
@@ -27,7 +30,10 @@ const markdown = `# 崩坏：星穹铁道 · 2.0 · 角色共生发行方案
 - T-8 至 T-5，每周一次。
 
 ### 语气、表达和文化注意事项
-- 亲切好奇的第一人称同行者语气。`;
+- 亲切好奇的第一人称同行者语气。
+
+### 禁止行为与风险边界
+- 不得虚构与玩家不存在的共同记忆。`;
 
 describe("character release imports", () => {
   it("parses heading sections and excludes document metadata", () => {
@@ -35,6 +41,8 @@ describe("character release imports", () => {
     expect(parsed.theme).toContain("三月七以同行者视角介绍黑天鹅");
     expect(parsed.narrative).toContain("初抵梦境都市");
     expect(parsed.narrative).toContain("亲切好奇");
+    expect(parsed.narrative).toContain("近30天未登录的老玩家");
+    expect(parsed.narrative).toContain("不得虚构与玩家不存在的共同记忆");
     expect(parsed.timeWindow).toContain("T-8 至 T-5");
     expect(parsed.facts).toEqual(["匹诺康尼是全新世界大版本，含梦境都市与新主线悬念。"]) ;
     expect(JSON.stringify(parsed)).not.toContain("2026-07-25T05:50:02.907Z");

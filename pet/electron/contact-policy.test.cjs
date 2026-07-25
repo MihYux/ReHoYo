@@ -64,6 +64,28 @@ test("quiet hours support a range that crosses midnight", () => {
   );
 });
 
+test("an explicit demo dispatch bypasses scheduled quiet hours but not player snooze", () => {
+  const data = makeAllowedData();
+  const quietNow = "2026-07-24T14:30:00.000Z";
+  const event = makeEvent({
+    payload: {
+      contentType: "daily",
+      templateId: "release-demo-command",
+      manualDispatchFrequencyBypass: true,
+      manualDemoQuietHoursBypass: true,
+    },
+  });
+  const allowed = evaluateContactPolicy({ data, event, now: quietNow });
+  assert.equal(allowed.allowed, true);
+  assert.equal(allowed.details.scheduledQuietHoursBypass, true);
+
+  data.relationship.quietUntil = "2026-07-30T00:00:00.000Z";
+  assert.equal(
+    evaluateContactPolicy({ data, event, now: quietNow }).reason,
+    CONTACT_SUPPRESSION.QUIET_PERIOD,
+  );
+});
+
 test("onboarding, pause and proactive consent suppress in priority order", () => {
   const data = makeAllowedData();
   data.profile.onboardingCompleted = false;

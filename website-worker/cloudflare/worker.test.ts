@@ -18,7 +18,9 @@ const command = {
   commandVersion: "command-1",
   publishedAt: "2026-07-25T00:00:00.000Z",
   rolloutPercent: 50,
-  delivery: { messageMode: "casual_check_in", frequencyBypass: true },
+  delivery: { messageMode: "release_context", frequencyBypass: true, demoMode: true },
+  region: policy.region,
+  plan: policy.plan,
   checksum: "b".repeat(64),
 };
 
@@ -77,11 +79,15 @@ describe("pet policy worker", () => {
     expect((env.PET_POLICIES.put as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe("pet-command:GLOBAL");
     const stored = JSON.parse((env.PET_POLICIES.put as ReturnType<typeof vi.fn>).mock.calls[0][1] as string);
     expect(stored).toMatchObject({ commandVersion: "command-1", rolloutPercent: 50 });
+    expect(stored.delivery).toEqual({ messageMode: "release_context", frequencyBypass: true, demoMode: true });
+    expect(stored.plan).toEqual(policy.plan);
   });
 
   it("serves the same global command without a region path", async () => {
-    const response = await worker.fetch(new Request("https://rehoyo.ccwu.cc/api/v1/pet-command/global"), environment(command), {} as ExecutionContext);
+    const env = environment(command);
+    const response = await worker.fetch(new Request("https://rehoyo.ccwu.cc/api/v1/pet-command/global"), env, {} as ExecutionContext);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ commandVersion: "command-1", rolloutPercent: 50 });
+    expect(env.PET_POLICIES.getWithMetadata).toHaveBeenCalledWith("pet-command:GLOBAL", { type: "json" });
   });
 });

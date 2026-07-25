@@ -22,7 +22,93 @@ const RawFixtureSchema = z.object({
   sourceRefs: z.array(SourceRefSchema),
 });
 
-const rawFixture = RawFixtureSchema.parse(JSON.parse(gunzipSync(Buffer.from(ENCODED_FIXTURE, "base64")).toString("utf8")));
+const decodedFixture = JSON.parse(gunzipSync(Buffer.from(ENCODED_FIXTURE, "base64")).toString("utf8"));
+const previousBlackSwanPositioning = "前半黑天鹅以记忆命途持续伤害为商业化核心";
+const currentBlackSwanPositioning = "前半黑天鹅以虚无命途持续伤害为商业化核心";
+
+if (typeof decodedFixture?.plan?.globalAxis !== "string" || !decodedFixture.plan.globalAxis.includes(previousBlackSwanPositioning)) {
+  throw new Error("Embedded demo global plan is missing the expected Black Swan positioning baseline.");
+}
+decodedFixture.plan.globalAxis = decodedFixture.plan.globalAxis.replace(previousBlackSwanPositioning, currentBlackSwanPositioning);
+
+const japanSymbiosis = decodedFixture.plan.characterSymbiosisRelease?.find(
+  (item: { regionId?: string }) => item.regionId === "region-jp",
+);
+if (!japanSymbiosis) {
+  throw new Error("Embedded demo plan is missing the Japan character symbiosis baseline.");
+}
+
+Object.assign(japanSymbiosis, {
+  symbiosisObjective: "通过三月七与玩家之间已有的长期陪伴关系，自然传递新版本「匹诺康尼」相关信息，重点提升老玩家回流率和版本预约率。",
+  targetPlayerGroups: [
+    "近30天未登录的老玩家",
+    "曾重点培养三月七或经常与三月七互动的玩家",
+    "对剧情、角色关系和声优内容关注度较高的玩家",
+  ],
+  characterSuitableVersionMessages: [
+    "匹诺康尼新地图即将开放",
+    "新版本存在与“梦境”相关的重要剧情",
+    "新角色黑天鹅即将登场",
+    "版本预约与回归奖励信息",
+  ],
+  communicationEntryPointsAndScenes: [
+    "优先从玩家与三月七的共同记忆、历史冒险经历和近期状态切入，不直接使用广告式表达。",
+    "玩家长时间未登录后，三月七主动表达想念。",
+    "玩家提到最近工作忙、没有时间玩游戏时，先回应玩家状态。",
+    "玩家查看桌宠或与三月七进行日常互动时，自然带出版本话题。",
+    "新版本上线前3天进行一次轻量提醒。",
+  ],
+  recommendedTimingAndFrequency: [
+    "玩家连续21天未登录时可触发一次召回沟通。",
+    "新版本上线前3天进行一次轻量提醒。",
+    "7天内最多发送2条发行消息。",
+  ],
+  toneExpressionAndCulturalNotes: [
+    "从玩家近期忙碌或久未见面切入，由三月七以长期同行者身份自然表达关心。",
+    "以一起去新的梦境世界看看作为邀请，不照抄发行目标，不使用广告式表达。",
+    "轻量邀请玩家查看版本预告，不要求立即登录，并根据日本区域语言与交流习惯自然改写。",
+  ],
+  prohibitedBehaviorsAndRiskBoundaries: [
+    "不得连续催促玩家登录。",
+    "不得直接使用购买、抽卡、付费等营销词。",
+    "不得虚构与玩家不存在的共同记忆。",
+    "玩家明确拒绝后停止本轮发行触达。",
+  ],
+  expectedEffectsAndMetrics: [
+    "提升近30天未登录老玩家的回流率。",
+    "提升目标玩家对2.0版本的预约率与匹诺康尼内容关注度。",
+  ],
+  characterTasks: [{
+    character: "三月七",
+    objective: "通过长期陪伴关系自然传递匹诺康尼信息，提升老玩家回流率和版本预约率。",
+    playerSegment: "近30天未登录、偏好剧情角色关系或经常与三月七互动的玩家",
+    versionMessage: "匹诺康尼新地图、梦境相关重要剧情、新角色黑天鹅以及版本预约与回归奖励信息。",
+    communicationAngle: "从玩家近期忙碌、久未见面或已授权的共同记忆切入，以一起去新的梦境世界看看作为邀请。",
+    interactionScene: "玩家长时间未登录、提到最近很忙、查看桌宠或在版本上线前3天进行日常互动时。",
+    timing: "连续21天未登录或新版本上线前3天",
+    frequency: "7天内最多2条",
+    tone: "三月七式亲切、自然、低压力同行者语气；轻量邀请，不要求立即登录。",
+    culturalNotes: [
+      "使用符合日本区域玩家习惯的自然表达，结合剧情、角色关系与声优内容兴趣选择切入点。",
+    ],
+    prohibitedBehaviors: [
+      "不得连续催促登录，不得使用购买、抽卡、付费等营销词。",
+    ],
+    riskBoundaries: [
+      "不得虚构共同记忆；玩家明确拒绝后立即停止本轮发行触达。",
+    ],
+    expectedEffect: "玩家愿意了解匹诺康尼、黑天鹅和梦境剧情，并自主选择查看版本预告、预约或回归。",
+    metrics: [
+      { name: "老玩家回流率", target: "相较同类玩家基线提升", measurementWindow: "版本上线后30天" },
+      { name: "版本预约率", target: "相较同类玩家基线提升", measurementWindow: "版本上线前3天至上线日" },
+    ],
+  }],
+  regionalStrategyLinks: [
+    "面向日本区域剧情、角色关系和声优内容受众，由三月七将黑天鹅与匹诺康尼信息转化为低压力同行邀请。",
+  ],
+});
+
+const rawFixture = RawFixtureSchema.parse(decodedFixture);
 
 export const embeddedDemoFixture = Object.freeze(rawFixture);
 

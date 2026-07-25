@@ -159,8 +159,10 @@ export function parseCharacterReleaseMarkdown(content: string, fileName: string)
   const sections = markdownSections(content);
   const objective = safeLines(sectionLines(sections, ["共生发行目标", "任务目标"]), "theme");
   const versionFacts = safeLines(sectionLines(sections, ["可传递的版本信息", "适合由角色传递的版本信息", "版本信息"]), "fact");
+  const targetPlayers = safeLines(sectionLines(sections, ["目标玩家群体", "目标玩家", "玩家群体"]), "narrative");
   const communication = safeLines(sectionLines(sections, ["沟通切入点与互动场景", "角色沟通切入点", "沟通切入点"]), "narrative");
   const tone = safeLines(sectionLines(sections, ["语气、表达和文化注意事项", "语气"]), "narrative");
+  const boundaries = safeLines(sectionLines(sections, ["禁止行为与风险边界", "禁止行为", "风险边界"]), "narrative");
   const timing = safeLines(sectionLines(sections, ["推荐触达时机与频率", "时机与频率"]), "timeWindow");
   const firstHeading = content.match(/^#\s+(.+?)\s*$/m)?.[1]?.replace(/\s*[·|-]\s*角色共生发行方案\s*$/, "").trim();
   const title = !releaseMetadataReason(firstHeading, "title")
@@ -169,7 +171,12 @@ export function parseCharacterReleaseMarkdown(content: string, fileName: string)
   return {
     title: title || "角色共生发行方案",
     theme: objective[0] || "",
-    narrative: [...communication, ...tone].join("；"),
+    narrative: [
+      ...(targetPlayers.length ? [`适合沟通的玩家：${targetPlayers.join("、")}`] : []),
+      ...communication,
+      ...tone,
+      ...(boundaries.length ? [`执行边界：${boundaries.join("；")}`] : []),
+    ].join("；"),
     timeWindow: timing.join("；"),
     facts: versionFacts,
   };
@@ -321,8 +328,10 @@ export async function publishCharacterRelease(regionId: string, taskId: string, 
       rolloutPercent: percent,
       // A console publish is an explicit dispatch command. The selected cohort
       // should receive this batch even if a previous proactive message used the
-      // normal cadence allowance; consent, pause and quiet-time guards remain.
+      // normal cadence allowance. Explicit demo dispatches also bypass the
+      // scheduled quiet-hours window; consent, pause and player snooze remain.
       frequencyBypass: true,
+      demoMode: exampleMode,
       region,
       task,
     });

@@ -135,6 +135,9 @@ function evaluateContactPolicy({ data, event, now }) {
   const bypassFrequencyLimits =
     event?.payload?.manualDispatchFrequencyBypass === true ||
     (versionTypes.has(contentType) && event?.payload?.exampleFrequencyBypass === true);
+  const bypassScheduledQuietHours =
+    event?.payload?.manualDemoQuietHoursBypass === true &&
+    event?.payload?.manualDispatchFrequencyBypass === true;
   const playerContext = event?.payload?.playerContext;
   if (
     versionTypes.has(contentType) &&
@@ -186,6 +189,7 @@ function evaluateContactPolicy({ data, event, now }) {
     );
   }
   if (
+    !bypassScheduledQuietHours &&
     isWithinQuietHours(
       evaluatedAt,
       data.profile.quietHours,
@@ -330,6 +334,7 @@ function evaluateContactPolicy({ data, event, now }) {
               : {}),
           }
         : {}),
+      ...(bypassScheduledQuietHours ? { scheduledQuietHoursBypass: true } : {}),
     },
   };
 }

@@ -30,13 +30,28 @@ test("local rules reject an operator objective mechanically interpolated into di
   assert.equal(result.passed, false);
   assert.ok(result.reasonCodes.includes("operator_objective_as_dialogue"));
 });
+test("local rules block a direct reveal until the player explicitly asks", () => {
+  const blocked = localReleaseMessageReview({
+    text: "那咱就从黑天鹅说起吧。她可是个很神秘的人。",
+    plan: plan(),
+  });
+  assert.equal(blocked.passed, false);
+  assert.ok(blocked.reasonCodes.includes("premature_direct_reveal"));
+
+  const allowed = localReleaseMessageReview({
+    text: "那咱就从黑天鹅说起吧。她可是个很神秘的人。",
+    plan: plan(),
+    allowDirectReveal: true,
+  });
+  assert.equal(allowed.passed, true);
+});
 test("parses strict structured reviews", () => {
   assert.equal(parseStructuredReview(semantic("execute")).decision, "execute");
   assert.throws(() => parseStructuredReview('{"decision":"execute"}'), /invalid_dimension/);
 });
-test("rewrites once, reviews again, then executes", async () => {
+test("rewrites once, reviews again, then executes after explicit player interest", async () => {
   const responses = [semantic("rewrite", "开拓者，我想带你认识黑天鹅，也一起看看匹诺康尼。有空再来就好。"), semantic("execute")];
-  const result = await runReleaseMessagePreflight({ text: "来看看匹诺康尼吧。", plan: plan(), requestReview: async () => ({ content: responses.shift(), model: "deepseek-v4-flash" }) });
+  const result = await runReleaseMessagePreflight({ text: "来看看匹诺康尼吧。", plan: plan(), context: { allowDirectReveal: true }, requestReview: async () => ({ content: responses.shift(), model: "deepseek-v4-flash" }) });
   assert.equal(result.decision, "execute"); assert.equal(result.rewriteCount, 1); assert.match(result.finalText, /黑天鹅/);
 });
 test("skips after the rewritten message fails its second review", async () => {

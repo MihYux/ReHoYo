@@ -48,3 +48,20 @@ test("hot reload keeps the last known good skill after an invalid edit", () => {
   assert.match(loader.getSnapshot().error, /frontmatter/);
   loader.close();
 });
+
+test("fresh prompt reloads the skill for every chat turn", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "march-skill-turn-"));
+  const filePath = path.join(directory, "SKILL.md");
+  fs.writeFileSync(filePath, validSkill("1.0.0"), "utf8");
+  const loader = new ReleaseSkillLoader({ filePath, watch: false });
+
+  fs.writeFileSync(
+    filePath,
+    validSkill("1.1.0").replace("玩家安全", "每轮重新读取后玩家安全"),
+    "utf8",
+  );
+
+  assert.match(loader.getFreshPrompt(), /每轮重新读取后玩家安全/);
+  assert.equal(loader.getSnapshot().version, "1.1.0");
+  loader.close();
+});

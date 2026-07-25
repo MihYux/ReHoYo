@@ -5,6 +5,7 @@ const { evaluateContactPolicy } = require("./contact-policy.cjs");
 const { reviewCharacterOutput } = require("./content-safety.cjs");
 const { validateReleasePlanFields } = require("./release-content-safety.cjs");
 const { localReleaseMessageReview } = require("./release-message-preflight.cjs");
+const { prematurelyRevealsSubject, proactiveOpeningWithinLength } = require("./release-dialogue.cjs");
 const { containsSensitiveMemory, extractMemoryCandidate } = require("./memory-candidates.cjs");
 const {
   PHASE_TO_MESSAGE_TYPE,
@@ -194,6 +195,7 @@ function normalizeRegionalReleaseInput(input) {
     rolloutPercent,
     messageMode,
     frequencyBypass: input.frequencyBypass === true || input.exampleMode === true,
+    demoMode: input.demoMode === true,
     memoryIds: asStringArray(input.memoryIds, [], 5),
     plan,
   };
@@ -223,39 +225,15 @@ function buildRegionalReleaseCandidate(data, plan, messageMode = "release_contex
     ) % openers.length;
     return { memory: null, body: openers[index] };
   }
-  const materials = [
-    ...(Array.isArray(plan.facts) ? plan.facts.map((fact) => fact.value) : []),
-    plan.theme,
-  ].filter((value) => typeof value === "string" && value.trim());
-  const findTopic = (patterns) => {
-    for (const material of materials) {
-      for (const pattern of patterns) {
-        const match = material.match(pattern);
-        const value = match?.[1]?.trim().replace(/[“”"']/g, "");
-        if (value && value.length <= 24) return value;
-      }
-    }
-    return "";
-  };
-  const subject = findTopic([
-    /(?:介绍|认识|聊聊|了解)(?:一下|关于)?[“"]?([^，。；：:“”"]{1,24})/,
-    /(?:关于|有关)[“"]?([^，。；：:“”"]{1,24})/,
-  ]);
-  const destination = findTopic([
-    /一起(?:去|看看|认识|了解|探索)[“"]?([^，。；：:“”"]{1,24})/,
-    /去[“"]?([^，。；：:“”"]{1,24})看看/,
-    /对[“"]?([^，。；：:“”"]{1,24})的兴趣/,
-  ]);
-  const fallbackFact = (Array.isArray(plan.facts) ? plan.facts : [])
-    .map((fact) => String(fact?.value || "").trim())
-    .find((value) => value && value.length <= 40 && !/(?:激发玩家|提升玩家|引导玩家|发行目标|任务目标)/.test(value)) || "";
-  const primary = subject || destination || fallbackFact;
-  const secondThought = destination && destination !== primary
-    ? `，也想和你一起去${destination}看看`
-    : "";
-  const body = primary
-    ? `开拓者，我最近正想和你聊聊${primary}${secondThought}。你有空的时候，咱们再慢慢说？最近忙也没关系。`
-    : "";
+  const openers = [
+    "开拓者，最近的旅途好像多了一点说不清的神秘感。等你有心情时，咱再把发现慢慢讲给你听？",
+    "开拓者，咱在路上碰见一件很适合留点悬念的事。先不揭晓，你想听的时候再叫咱就好。",
+    "开拓者，今天望着车窗外时，咱总觉得下一段旅途会有意外的故事。你哪天好奇了，咱们再一起猜猜看。",
+  ];
+  const body = openers[Number.parseInt(
+    createHash("sha256").update(`${sourceId}:${data.profile.id}:release-teaser`).digest("hex").slice(0, 8),
+    16,
+  ) % openers.length];
   return {
     memory: null,
     body,
@@ -1345,17 +1323,32 @@ class CompanionStore {
 
   getPlayerSnapshot() {
     const snapshot = this.getSnapshot();
-    snapshot.messages = snapshot.messages.map((message) => ({
-      ...message,
-      title: sanitizePlayerVisibleText(
-        message.title,
-        PLAYER_VISIBLE_TITLE_FALLBACK,
-      ),
-      body: sanitizePlayerVisibleText(
-        message.body,
-        PLAYER_VISIBLE_MESSAGE_FALLBACK,
-      ),
-    }));
+    snapshot.messages = snapshot.messages.map((message) => {
+      const event = snapshot.events.find((item) => item.id === message.eventId);
+      const releasePlan = event?.payload?.releasePlan;
+      const historicalDirectReveal =
+        message.deliveryMode === "proactive" &&
+        releasePlan &&
+        prematurelyRevealsSubject(message.body, releasePlan);
+      return {
+        ...message,
+        title: sanitizePlayerVisibleText(
+          message.title,
+          PLAYER_VISIBLE_TITLE_FALLBACK,
+        ),
+        body: historicalDirectReveal
+          ? buildRegionalReleaseCandidate(
+              snapshot,
+              releasePlan,
+              "release_context",
+              event?.payload?.sourceId || message.id,
+            ).body
+          : sanitizePlayerVisibleText(
+              message.body,
+              PLAYER_VISIBLE_MESSAGE_FALLBACK,
+            ),
+      };
+    });
     snapshot.memories = snapshot.memories.filter(
       (memory) => memory.hidden !== true,
     );
@@ -3377,6 +3370,7 @@ class CompanionStore {
         payload: {
           contentType: normalized.messageMode === "casual_check_in" ? "daily" : "version_launch",
           manualDispatchFrequencyBypass: normalized.frequencyBypass,
+          manualDemoQuietHoursBypass: normalized.demoMode,
           templateId: `regional-plan-${normalized.sourceId}`.slice(0, 160),
         },
       },
@@ -3392,6 +3386,7 @@ class CompanionStore {
       rolloutPercent,
       messageMode,
       frequencyBypass,
+      demoMode,
       memoryIds,
       plan,
     } = normalizeRegionalReleaseInput(input);
@@ -3437,6 +3432,7 @@ class CompanionStore {
           rolloutSelected,
           messageMode,
           manualDispatchFrequencyBypass: frequencyBypass,
+          manualDemoQuietHoursBypass: demoMode,
           contentType: messageMode === "casual_check_in" ? "daily" : "version_launch",
           templateId: `regional-plan-${sourceId}`.slice(0, 160),
           ...(rolloutSelected ? { releasePlan: plan } : {}),
@@ -3469,7 +3465,7 @@ class CompanionStore {
         actor: "system",
         entityType: "event",
         entityId: eventId,
-        metadata: { sourceId, taskId, regionId, rolloutPercent, messageMode, frequencyBypass },
+        metadata: { sourceId, taskId, regionId, rolloutPercent, messageMode, frequencyBypass, demoMode },
       });
 
       const contactDecision = evaluateContactPolicy({
@@ -3536,7 +3532,10 @@ class CompanionStore {
         });
         return;
       }
-      const body = sanitizePlayerVisibleText(preflight.finalText, PLAYER_VISIBLE_MESSAGE_FALLBACK);
+      const candidateText = prematurelyRevealsSubject(preflight.finalText, plan) || !proactiveOpeningWithinLength(preflight.finalText)
+        ? buildRegionalReleaseCandidate(data, plan, "release_context", sourceId).body
+        : preflight.finalText;
+      const body = sanitizePlayerVisibleText(candidateText, PLAYER_VISIBLE_MESSAGE_FALLBACK);
       const messageId = `message-${randomUUID()}`;
       data.messages.unshift({
         id: messageId,
@@ -3563,6 +3562,7 @@ class CompanionStore {
             "release.regional_plan_received",
             "release.gray_rollout_selected",
             ...(frequencyBypass ? ["release.manual_dispatch_frequency_bypass"] : []),
+            ...(demoMode ? ["release.demo_scheduled_quiet_hours_bypass"] : []),
             "memory.authorized_reference",
             messageMode === "casual_check_in"
               ? "relationship.casual_online_guide"

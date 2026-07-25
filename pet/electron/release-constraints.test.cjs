@@ -254,3 +254,17 @@ test("release workspace preload is narrow and mutation is absent from player pre
   assert.match(operatorPreload, /release:deliver-test/);
   assert.equal(/release:save-task/.test(playerPreload), false);
 });
+
+test("every model-backed player chat reloads and includes the release skill", () => {
+  const mainSource = fs.readFileSync(
+    path.join(__dirname, "main.cjs"),
+    "utf8",
+  );
+  const chatHandler = mainSource.slice(
+    mainSource.indexOf('ipcMain.handle("ai:chat"'),
+    mainSource.indexOf("function playerDataAfter"),
+  );
+  assert.match(chatHandler, /releaseSkillLoader\.getFreshPrompt\(\)/);
+  assert.match(chatHandler, /本轮已重新读取的发行行为 Skill/);
+  assert.match(chatHandler, /没有自然相关的发行语境时选择 Level 0/);
+});

@@ -13,16 +13,6 @@ import styles from "./character-release.module.css";
 
 type Step = "tasks" | "region" | "release" | "optimization";
 type NewRegion = { code: string; name: string; language: string; timezone: string };
-type RealtimeStatus = {
-  batchId: string; onlineConnections: number; notified: number; received: number;
-  generated: number; degraded: number; suppressed: number; failed: number; shardFailures: number;
-};
-type GlobalCoverage = { researchRunId: string; regionNames: string[]; missing: string[]; complete: boolean };
-type GlobalPublishResponse = {
-  data: CharacterReleaseSnapshot;
-  batch: { batchId: string; researchRunId: string; regionCount: number; publishedAt: string; expiresAt: string; checksum: string };
-  status: RealtimeStatus;
-};
 const steps: Array<{ id: Step; number: string; label: string; note: string; icon: typeof Globe }> = [
   { id: "tasks", number: "01", label: "版本任务", note: "同步并编辑单区域方案", icon: FileArrowUp },
   { id: "region", number: "02", label: "区域数据", note: "确认授权与执行边界", icon: Globe },
@@ -46,26 +36,6 @@ function taskInput(task: CharacterReleaseTask): CharacterReleaseTaskInput {
   return { id: task.id, title: task.title, objective: task.objective, theme: task.theme, narrative: task.narrative, timeWindow: task.timeWindow, consentConfirmed: task.consentConfirmed, facts: task.facts };
 }
 
-function globalCoverage(data: CharacterReleaseSnapshot | null, task: CharacterReleaseTask | null): GlobalCoverage {
-  const researchRunId = task?.sourceDocument?.researchRunId?.trim() || "";
-  if (!data || !task || !researchRunId) {
-    return { researchRunId, regionNames: [], missing: ["当前任务缺少研究批次"], complete: false };
-  }
-  const regionNames: string[] = [];
-  const missing: string[] = [];
-  for (const region of data.regions) {
-    const workspace = data.workspaces[region.id];
-    if (workspace?.emergencyStoppedAt) {
-      missing.push(`${region.name}（已暂停）`);
-    } else if (!workspace?.tasks.some((item) => item.status === "ready" && item.sourceDocument?.researchRunId === researchRunId)) {
-      missing.push(`${region.name}（缺少同批次已审核策略）`);
-    } else {
-      regionNames.push(region.name);
-    }
-  }
-  return { researchRunId, regionNames, missing, complete: missing.length === 0 && regionNames.length === data.regions.length };
-}
-
 export default function CharacterReleasePage() {
   const [data, setData] = useState<CharacterReleaseSnapshot | null>(null);
   const [step, setStep] = useState<Step>("tasks");
@@ -75,8 +45,6 @@ export default function CharacterReleasePage() {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [regionPanel, setRegionPanel] = useState(false);
-  const [globalConfirm, setGlobalConfirm] = useState(false);
-  const [realtime, setRealtime] = useState<{ batch: GlobalPublishResponse["batch"]; status: RealtimeStatus } | null>(null);
   const [newRegion, setNewRegion] = useState({ code: "", name: "", language: "zh-CN", timezone: "Asia/Shanghai" });
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -88,7 +56,6 @@ export default function CharacterReleasePage() {
   const workspace = data && region ? data.workspaces[region.id] : null;
   const task = workspace?.tasks.find((item) => item.id === selectedTaskId) || workspace?.tasks[0] || null;
   const latestRelease = workspace?.releases.find((item) => item.taskId === task?.id) || null;
-  const coverage = useMemo(() => globalCoverage(data, task), [data, task]);
 
   useEffect(() => {
     const first = workspace?.tasks[0];
@@ -105,22 +72,6 @@ export default function CharacterReleasePage() {
     setSelectedTaskId(imported.id);
     setDraft(taskInput(imported));
   }, [data]);
-
-  useEffect(() => {
-    if (!realtime?.batch.batchId) return;
-    let cancelled = false;
-    const refresh = async () => {
-      try {
-        const status = await call<RealtimeStatus>(`/api/character-release/realtime-status/${encodeURIComponent(realtime.batch.batchId)}`);
-        if (!cancelled) setRealtime((current) => current ? { ...current, status } : current);
-      } catch {
-        // The persisted release remains valid if a transient status poll fails.
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 1500);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, [realtime?.batch.batchId]);
 
   const mutate = async (key: string, action: () => Promise<CharacterReleaseSnapshot>, success: string) => {
     setBusy(key); setNotice(null);
@@ -179,30 +130,18 @@ export default function CharacterReleasePage() {
     }
   };
 
-  const publish = (exampleMode: boolean) => {
-    if (!region || !task) return;
+  const publish = async (exampleMode: boolean) => {
+    if (!region || !task) return null;
     return mutate(exampleMode ? "example" : "publish", () => call("/api/character-release/publish", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ regionId: region.id, taskId: task.id, rolloutPercent: rollout, exampleMode }),
     }), exampleMode
-      ? "全量自然问候已上传到 Cloudflare；允许主动联系的桌宠将在约 1 分钟内发送。"
+      ? "演示问候已上传到 Cloudflare；允许主动联系且未暂停的桌宠将在数秒内主动发起聊天。"
       : `全区域桌宠自然问候已按 ${rollout}% 灰度上传到 Cloudflare；命中且允许主动联系的桌宠将在约 1 分钟内发送。`);
   };
 
-  const publishGlobal = async () => {
-    if (!region || !task || !coverage.complete) return;
-    setBusy("global"); setNotice(null);
-    try {
-      const result = await call<GlobalPublishResponse>("/api/character-release/publish-global", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ regionId: region.id, taskId: task.id }),
-      });
-      setData(result.data);
-      setRealtime({ batch: result.batch, status: result.status });
-      setGlobalConfirm(false);
-      setNotice({ kind: "success", text: `全球实时批次已持久化并广播：${result.batch.regionCount} 个区域，在线桌宠将立即更新后发起发行对话。` });
-    } catch (error) {
-      setNotice({ kind: "error", text: error instanceof Error ? error.message : String(error) });
-    } finally { setBusy(""); }
+  const publishDemo = async () => {
+    const next = await publish(true);
+    if (next) setStep("optimization");
   };
 
   const content = step === "tasks"
@@ -210,14 +149,14 @@ export default function CharacterReleasePage() {
     : step === "region"
       ? <RegionStep region={region} workspace={workspace} />
       : step === "release"
-        ? <ReleaseStep task={task} regionName={region?.name || ""} stopped={Boolean(workspace?.emergencyStoppedAt)} rollout={rollout} setRollout={setRollout} publish={publish} coverage={coverage} realtime={realtime} onGlobalConfirm={() => setGlobalConfirm(true)} busy={busy} />
+        ? <ReleaseStep task={task} regionName={region?.name || ""} stopped={Boolean(workspace?.emergencyStoppedAt)} rollout={rollout} setRollout={setRollout} publish={publish} publishDemo={publishDemo} busy={busy} />
         : <OptimizationStep task={task} regionName={region?.name || ""} release={latestRelease} />;
 
   const stepIndex = steps.findIndex((item) => item.id === step);
   return <div className={`page-enter ${styles.page}`}>
     <input ref={fileRef} className="sr-only" type="file" accept=".docx,.pdf,.md,.txt" onChange={(event) => event.target.files?.[0] && void importFile(event.target.files[0])} />
     <header className={styles.hero}>
-      <div><p className="page-kicker">Character symbiosis / Stage 05</p><h1>区域桌宠策略发布台</h1><p>左侧保留单区域灰度问候；右侧把同一研究批次的全部区域策略实时广播给桌宠，策略激活后主动开启发行对话。</p></div>
+      <div><p className="page-kicker">Character symbiosis / Stage 05</p><h1>区域桌宠策略发布台</h1><p>左侧保留普通灰度问候；右侧演示按钮直接发布当前区域的 100% 主动问候，并在完成后进入效果优化。</p></div>
       <div className={styles.context}>
         <button onClick={() => setRegionPanel(true)}><Globe weight="duotone" /><span><small>当前区域</small><b>{region?.name || "加载中"}</b></span><ArrowRight /></button>
         <button className={workspace?.emergencyStoppedAt ? styles.resume : styles.emergency} disabled={!region || Boolean(busy)} onClick={() => region && mutate("emergency", () => call("/api/character-release/emergency", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ regionId: region.id, enabled: !workspace?.emergencyStoppedAt }) }), workspace?.emergencyStoppedAt ? "区域发行已恢复。" : "区域发行已紧急暂停。") }><Warning weight="fill" />{workspace?.emergencyStoppedAt ? "恢复区域" : "紧急暂停"}</button>
@@ -230,7 +169,6 @@ export default function CharacterReleasePage() {
     {!data ? <div className={styles.loading}><SpinnerGap className="spin" />正在加载角色发行工作区</div> : <main className={styles.workspace}>{content}<div className={styles.next}><span>下一步</span><b>{stepIndex < steps.length - 1 ? steps[stepIndex + 1].label : "持续观察并优化"}</b>{stepIndex < steps.length - 1 ? <button className="button button-primary" onClick={() => setStep(steps[stepIndex + 1].id)}>继续到{steps[stepIndex + 1].label}<ArrowRight /></button> : null}</div></main>}
     {busy ? <div className={styles.busy}><SpinnerGap className="spin" />正在执行并写入审计记录</div> : null}
     {regionPanel && data ? <RegionDialog data={data} current={region?.id || ""} newRegion={newRegion} setNewRegion={setNewRegion} onSwitch={switchRegion} onClose={() => setRegionPanel(false)} onAdd={async () => { const next = await mutate("add-region", () => call("/api/character-release/regions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newRegion) }), "新区域已加入角色发行工作区。"); if (next) { setNewRegion({ code: "", name: "", language: "zh-CN", timezone: "Asia/Shanghai" }); setRegionPanel(false); } }} /> : null}
-    {globalConfirm && data && task ? <GlobalReleaseDialog coverage={coverage} task={task} onClose={() => setGlobalConfirm(false)} onConfirm={publishGlobal} busy={Boolean(busy)} /> : null}
   </div>;
 }
 
@@ -265,28 +203,21 @@ function RegionStep({ region, workspace }: { region?: CharacterReleaseRegion; wo
   return <><div className={styles.regionHero}><div><span>{region.code}</span><h2>{region.name}区域执行边界</h2><p>{region.language} · {region.timeZone} · 勿扰 {region.quietHours.start}–{region.quietHours.end}</p></div><ShieldCheck weight="duotone" /></div><div className={styles.kpis}><article><span>符合条件</span><b>{eligible.toLocaleString()}</b><small>聚合玩家样本</small></article><article><span>明确授权</span><b>{authorized.toLocaleString()}</b><small>{(authorized / eligible * 100).toFixed(1)}%</small></article><article><span>当前可达</span><b>{reachable.toLocaleString()}</b><small>已应用勿扰与频控</small></article><article className={styles.guard}><span>区域状态</span><b>{workspace?.emergencyStoppedAt ? "已暂停" : "安全"}</b><small>关系护栏有效</small></article></div><div className={styles.regionGrid}><section className={styles.card}><div className={styles.cardHead}><div><span>匿名聚合</span><h3>玩家分群</h3></div></div>{region.segments.map((item) => <div className={styles.segment} key={item.id}><div><b>{item.name}</b><small>排除 {item.excluded.toLocaleString()}</small></div><span>{item.reachable.toLocaleString()} 可达</span></div>)}</section><section className={styles.card}><div className={styles.cardHead}><div><span>执行网络</span><h3>共生式发行 AI</h3></div></div>{region.releaseAgents.map((agent) => <div className={styles.agent} key={agent.id}><i /><div><b>{agent.name}</b><small>{agent.description}</small></div><span>ON</span></div>)}</section></div></>;
 }
 
-function ReleaseStep({ task, regionName, stopped, rollout, setRollout, publish, coverage, realtime, onGlobalConfirm, busy }: {
+function ReleaseStep({ task, regionName, stopped, rollout, setRollout, publish, publishDemo, busy }: {
   task: CharacterReleaseTask | null; regionName: string; stopped: boolean; rollout: number;
   setRollout: Dispatch<SetStateAction<number>>;
   publish: (exampleMode: boolean) => Promise<CharacterReleaseSnapshot | null> | undefined;
-  coverage: GlobalCoverage; realtime: { batch: GlobalPublishResponse["batch"]; status: RealtimeStatus } | null;
-  onGlobalConfirm: () => void; busy: string;
+  publishDemo: () => Promise<void>; busy: string;
 }) {
   if (!task) return <Empty title="先准备一个版本任务" text="返回版本任务，同步当前区域的角色共生 Markdown 或手动导入方案。" />;
-  const status = realtime?.status;
   return <>
     <div className={styles.releaseSummary}><div><span>当前区域方案</span><h2>{task.title}</h2><p>{task.theme}</p></div><dl><div><dt>区域指南</dt><dd>{regionName}</dd></div><div><dt>来源</dt><dd>{task.sourceDocument?.name || "控制台创建"}</dd></div><div><dt>状态</dt><dd>{task.status === "ready" ? "可发布" : "草稿"}</dd></div></dl></div>
     <section className={styles.card}><div className={styles.cardHead}><div><span>普通灰度控制</span><h3>设置全区域桌宠的自然问候比例</h3></div><strong className={styles.rolloutValue}>{rollout}%</strong></div><div className={styles.presets}>{[1, 5, 10, 25, 50, 100].map((value) => <button key={value} className={rollout === value ? styles.selected : ""} onClick={() => setRollout(value)}>{value}%</button>)}</div><input className={styles.range} type="range" min="1" max="100" value={rollout} onChange={(event) => setRollout(Number(event.target.value))} /><p className={styles.muted}>左侧按钮保持现有逻辑：更新当前区域指南，并发布一条按稳定比例命中的全局自然问候命令。</p></section>
-    <div className={`${styles.coverage} ${coverage.complete ? styles.coverageReady : styles.coverageError}`}>
-      <b>{coverage.complete ? `全球批次就绪 · ${coverage.regionNames.length} 个区域` : "全球批次尚未就绪"}</b>
-      <span>{coverage.complete ? `研究批次 ${coverage.researchRunId} 已通过全区域一致性校验。` : `待补齐：${coverage.missing.join("、")}`}</span>
+    <div className={`${styles.coverage} ${styles.coverageReady}`}>
+      <b>演示发行无需准备全球批次</b>
+      <span>使用当前区域的已审核任务发布 100% 主动问候；演示模式会绕过定时勿扰与普通频控，桌宠收到新命令后主动开启聊天。</span>
     </div>
-    <div className={styles.publishActions}><button className="button button-primary" disabled={stopped || task.status !== "ready" || Boolean(busy)} onClick={() => publish(false)}><PaperPlaneTilt weight="fill" />按 {rollout}% 向全部区域发送</button><button className={styles.example} disabled={task.status !== "ready" || !coverage.complete || Boolean(busy)} onClick={onGlobalConfirm}><Sparkle weight="fill" />实时全量发行 · 100%</button></div>
-    {status ? <section className={`${styles.card} ${styles.receipt}`}><div className={styles.cardHead}><div><span>ANONYMOUS RECEIPTS</span><h3>全球实时发行回执</h3></div><code>{status.batchId.slice(0, 16)}</code></div><div className={styles.receiptGrid}>{[
-      ["在线连接", status.onlineConnections], ["已通知", status.notified], ["已收到", status.received],
-      ["已生成", status.generated], ["降级生成", status.degraded], ["护栏拦截", status.suppressed],
-      ["失败", status.failed], ["分片失败", status.shardFailures],
-    ].map(([label, value]) => <div key={String(label)}><span>{label}</span><b>{value}</b></div>)}</div><p className={styles.muted}>仅显示会话级匿名聚合计数；不会上传聊天、记忆或设备身份。</p></section> : null}
+    <div className={styles.publishActions}><button className="button button-primary" disabled={stopped || task.status !== "ready" || Boolean(busy)} onClick={() => publish(false)}><PaperPlaneTilt weight="fill" />按 {rollout}% 向全部区域发送</button><button className={styles.example} disabled={stopped || task.status !== "ready" || Boolean(busy)} onClick={() => void publishDemo()}><Sparkle weight="fill" />实时全量发行（演示）· 100%</button></div>
   </>;
 }
 
@@ -299,12 +230,6 @@ function OptimizationStep({ task, regionName, release }: { task: CharacterReleas
 function simulated(seed: string, rollout: number) { let hash = [...seed].reduce((sum, char) => Math.imul(sum ^ char.charCodeAt(0), 16777619), 2166136261) >>> 0; const unit = () => ((hash = Math.imul(hash ^ (hash >>> 13), 1274126177) >>> 0) / 4294967295); return { reached: Math.max(18, Math.round((4600 + unit() * 2800) * rollout / 100)), conversation: (27 + unit() * 9).toFixed(1), intent: (15 + unit() * 8).toFixed(1), health: Math.round(88 + unit() * 7), days: Array.from({ length: 7 }, (_, index) => Math.round(28 + index * 7 + unit() * 8)) }; }
 
 function Empty({ title, text }: { title: string; text: string }) { return <div className={styles.empty}><Sparkle weight="duotone" /><h2>{title}</h2><p>{text}</p></div>; }
-
-function GlobalReleaseDialog({ coverage, task, onClose, onConfirm, busy }: {
-  coverage: GlobalCoverage; task: CharacterReleaseTask; onClose: () => void; onConfirm: () => Promise<void>; busy: boolean;
-}) {
-  return <div className={styles.backdrop} onMouseDown={onClose}><div className={styles.dialog} onMouseDown={(event) => event.stopPropagation()}><header><div><span>GLOBAL REALTIME RELEASE</span><h2>确认完整全球实时发行</h2></div><button onClick={onClose} aria-label="关闭"><X /></button></header><div className={styles.confirmBody}><p>将一次性持久化并广播“{task.title}”同一研究批次下的全部区域策略。</p><dl><div><dt>研究批次</dt><dd>{coverage.researchRunId}</dd></div><div><dt>区域覆盖</dt><dd>{coverage.regionNames.join("、")}</dd></div><div><dt>灰度比例</dt><dd>100%</dd></div><div><dt>有效期</dt><dd>24 小时</dd></div></dl><div className={styles.confirmWarning}><Sparkle weight="fill" /><span>允许主动联系且不处于暂停或勿扰时段的桌宠会先更新区域策略，再使用 DeepSeek 思考并主动开启发行对话。</span></div></div><div className={styles.dialogActions}><button className="button" onClick={onClose} disabled={busy}>取消</button><button className="button button-primary" onClick={() => void onConfirm()} disabled={busy}><PaperPlaneTilt weight="fill" />确认实时发行</button></div></div></div>;
-}
 
 function RegionDialog({ data, current, newRegion, setNewRegion, onSwitch, onClose, onAdd }: {
   data: CharacterReleaseSnapshot; current: string; newRegion: NewRegion;

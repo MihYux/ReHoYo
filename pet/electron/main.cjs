@@ -10,6 +10,7 @@ const {
   Tray,
 } = require("electron");
 const { execFileSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -22,6 +23,7 @@ const march7thSkillProfile = require("../shared/march7th-skill-profile.json");
 const promptConfig = require("../shared/march7th-prompt.json");
 const { requestDeepSeekChat } = require("./ai-client.cjs");
 const { AiSettingsStore } = require("./ai-settings.cjs");
+const { cloudflarePopupDelivery } = require("./cloudflare-popup-policy.cjs");
 const {
   buildCampaignGenerationContext,
   generateCampaignCandidate,
@@ -35,7 +37,7 @@ const { ReleaseSkillLoader } = require("./release-skill-loader.cjs");
 const { RemotePolicySync, profileRegionCode } = require("./remote-policy-sync.cjs");
 const { RemoteCommandSync } = require("./remote-command-sync.cjs");
 const { RealtimeReleaseSync } = require("./realtime-release-sync.cjs");
-const { generateReleaseOpening, safeFallback } = require("./release-dialogue.cjs");
+const { generateReleaseOpening, playerExplicitlyRequestsReveal, safeFallback } = require("./release-dialogue.cjs");
 const {
   SAFE_NON_RELEASE_TEXT,
   runReleaseMessagePreflight,
@@ -158,9 +160,13 @@ function getDesktopStatus() {
   };
 }
 
-function notifyCompanionDataChanged(data) {
+function notifyCompanionDataChanged(data, delivery = null) {
   if (petWindow && !petWindow.isDestroyed()) {
-    petWindow.webContents.send("companion:data-updated", data);
+    petWindow.webContents.send(
+      "companion:data-updated",
+      data,
+      delivery,
+    );
   }
 }
 
@@ -183,14 +189,8 @@ function startCompanionDataWatcher() {
     (current, previous) => {
       if (current.mtimeMs <= previous.mtimeMs || !companionStore) return;
       try {
-        const before = companionStore.getSnapshot();
-        const previousReleaseId = latestRegionalReleaseMessage(before)?.id;
         const next = companionStore.reloadFromDisk();
         notifyCompanionDataChanged(next);
-        const nextRelease = latestRegionalReleaseMessage(next);
-        if (nextRelease && nextRelease.id !== previousReleaseId) {
-          showPetWindow();
-        }
       } catch {
         // Atomic writes may briefly replace the path; the next watch tick retries.
       }
@@ -432,13 +432,14 @@ async function applyRemoteCommand(command, state) {
   companionStore.reloadFromDisk();
   const before = companionStore.getSnapshot();
   const beforeReleaseId = latestRegionalReleaseMessage(before)?.id;
+  const demoRelease = command.delivery.demoMode === true && command.delivery.messageMode === "release_context";
   const deliveryInput = {
     sourceId: `global-command:${command.commandVersion}`,
-    taskId: "global-casual-check-in",
-    regionId: "global",
+    taskId: demoRelease ? command.plan.id : "global-casual-check-in",
+    regionId: demoRelease ? command.region.id : "global",
     rolloutPercent: command.rolloutPercent,
-    region: activeRemotePolicy?.region || {},
-    plan: {
+    region: demoRelease ? command.region : (activeRemotePolicy?.region || {}),
+    plan: demoRelease ? command.plan : {
       id: "global-casual-check-in",
       title: "全局自然问候",
       theme: "按照桌宠当前在线指南自然陪伴用户",
@@ -449,13 +450,98 @@ async function applyRemoteCommand(command, state) {
     source: null,
     messageMode: command.delivery.messageMode,
     frequencyBypass: command.delivery.frequencyBypass === true,
+    demoMode: command.delivery.demoMode === true,
   };
-  const prepared = companionStore.prepareRegionalReleaseMessage(deliveryInput);
-  const preflight = await reviewReleaseMessage(prepared);
+  let preflight;
+  if (demoRelease) {
+    const contact = companionStore.previewRegionalReleaseContact(deliveryInput);
+    const recentOpenings = before.messages
+      .filter((message) => message?.releaseSourceId && typeof message?.body === "string")
+      .slice(-6)
+      .map((message) => message.body);
+    const variationKey = crypto
+      .createHash("sha256")
+      .update(`${before.profile.id}:${command.commandVersion}`)
+      .digest("hex");
+    if (!contact.allowed) {
+      preflight = {
+        decision: "execute",
+        dimensions: {},
+        reasonCodes: [],
+        rewriteCount: 0,
+        reviewMode: "contact_guard",
+        finalText: safeFallback(command.plan, { variationKey, recentOpenings }),
+        model: "local-rules",
+        degraded: true,
+      };
+    } else {
+      const memoryQuery = [
+        command.plan.title,
+        command.plan.theme,
+        ...command.plan.facts.map((fact) => fact.value),
+      ].join(" ");
+      const memories = companionStore.getCampaignReleaseMemories(memoryQuery, 5);
+      deliveryInput.memoryIds = memories.map((memory) => memory.id);
+      const settings = aiSettingsStore.getPublicSettings();
+      let generated = await generateReleaseOpening({
+        policy: {
+          region: command.region,
+          plan: command.plan,
+          systemPrompt: activeRemotePolicy?.systemPrompt || "只使用当前已审核事实，以符合所在区域习惯的自然表达与玩家交流。",
+        },
+        memories,
+        recentOpenings,
+        variationKey,
+        apiKey: settings.hasApiKey ? aiSettingsStore.getApiKey() : "",
+        model: settings.model,
+        basePrompt: promptConfig.systemPrompt,
+        skillPrompt: releaseSkillLoader.getPrompt(),
+        requestChat: requestDeepSeekChat,
+        authorize: (characters) => serviceBudgetStore.authorize("deepseek", { characters }),
+        recordSuccess: () => serviceBudgetStore.recordSuccess("deepseek"),
+        recordFailure: (codeValue) => serviceBudgetStore.recordFailure("deepseek", codeValue),
+      });
+      preflight = await reviewReleaseMessage({
+        text: generated.text,
+        plan: command.plan,
+        context: {
+          region: command.region,
+          contactAllowed: true,
+          memoryUsed: memories.length > 0,
+          messageMode: "release_context",
+        },
+      });
+      if (preflight.decision !== "execute" && generated.source === "model") {
+        generated = {
+          text: safeFallback(command.plan, { variationKey, recentOpenings }),
+          source: "fallback",
+          model: "local-rules",
+          degraded: true,
+          reasonCode: "model_preflight_failed",
+        };
+        preflight = await reviewReleaseMessage({
+          text: generated.text,
+          plan: command.plan,
+          context: {
+            region: command.region,
+            contactAllowed: true,
+            memoryUsed: false,
+            messageMode: "release_context",
+          },
+        });
+      }
+    }
+  } else {
+    const prepared = companionStore.prepareRegionalReleaseMessage(deliveryInput);
+    preflight = await reviewReleaseMessage(prepared);
+  }
   const next = companionStore.receiveRegionalReleasePlan(deliveryInput, preflight);
-  notifyCompanionDataChanged(next);
   const nextRelease = latestRegionalReleaseMessage(next);
-  if (nextRelease && nextRelease.id !== beforeReleaseId) showPetWindow();
+  const cloudflareDelivery = nextRelease && nextRelease.id !== beforeReleaseId
+    ? cloudflarePopupDelivery(state?.source, nextRelease.id)
+    : null;
+  notifyCompanionDataChanged(next, cloudflareDelivery);
+  if (cloudflareDelivery) showPetWindow();
 }
 
 async function applyRealtimeReleaseBatch(batch, state) {
@@ -471,6 +557,14 @@ async function applyRealtimeReleaseBatch(batch, state) {
   const sourceId = `global-release:${batch.batchId}`.slice(0, 160);
   const memoryQuery = [policy.plan.title, policy.plan.theme, ...policy.plan.facts.map((fact) => fact.value)].join(" ");
   const memories = companionStore.getCampaignReleaseMemories(memoryQuery, 5);
+  const recentOpenings = before.messages
+    .filter((message) => message?.releaseSourceId && typeof message?.body === "string")
+    .slice(-6)
+    .map((message) => message.body);
+  const variationKey = crypto
+    .createHash("sha256")
+    .update(`${before.profile.id}:${batch.batchId}`)
+    .digest("hex");
   const deliveryInput = {
     sourceId,
     taskId: policy.plan.id,
@@ -491,7 +585,7 @@ async function applyRealtimeReleaseBatch(batch, state) {
       reasonCodes: [],
       rewriteCount: 0,
       reviewMode: "contact_guard",
-      finalText: safeFallback(policy.plan),
+      finalText: safeFallback(policy.plan, { variationKey, recentOpenings }),
       model: "local-rules",
       degraded: true,
     });
@@ -502,6 +596,8 @@ async function applyRealtimeReleaseBatch(batch, state) {
   let generated = await generateReleaseOpening({
     policy,
     memories,
+    recentOpenings,
+    variationKey,
     apiKey: settings.hasApiKey ? aiSettingsStore.getApiKey() : "",
     model: settings.model,
     basePrompt: promptConfig.systemPrompt,
@@ -517,7 +613,7 @@ async function applyRealtimeReleaseBatch(batch, state) {
     context: { region: policy.region, contactAllowed: true, memoryUsed: memories.length > 0, messageMode: "release_context" },
   });
   if (preflight.decision !== "execute" && generated.source === "model") {
-    generated = { text: safeFallback(policy.plan), source: "fallback", model: "local-rules", degraded: true, reasonCode: "model_preflight_failed" };
+    generated = { text: safeFallback(policy.plan, { variationKey, recentOpenings }), source: "fallback", model: "local-rules", degraded: true, reasonCode: "model_preflight_failed" };
     preflight = await reviewReleaseMessage({
       text: generated.text,
       plan: policy.plan,
@@ -525,12 +621,18 @@ async function applyRealtimeReleaseBatch(batch, state) {
     });
   }
   const next = companionStore.receiveRegionalReleasePlan(deliveryInput, preflight);
-  notifyCompanionDataChanged(next);
   const event = next.events.find((item) => item.payload?.sourceId === sourceId);
   if (event?.status === "executed") {
-    showPetWindow();
+    const nextRelease = latestRegionalReleaseMessage(next);
+    const cloudflareDelivery = cloudflarePopupDelivery(
+      state?.source,
+      nextRelease?.id,
+    );
+    notifyCompanionDataChanged(next, cloudflareDelivery);
+    if (cloudflareDelivery) showPetWindow();
     return { stage: generated.degraded ? "degraded" : "generated", reasonCode: generated.reasonCode || "" };
   }
+  notifyCompanionDataChanged(next);
   if (event?.status === "suppressed") return { stage: "suppressed", reasonCode: event.suppressionReason || "release_suppressed" };
   return { stage: "failed", reasonCode: "release_event_missing" };
 }
@@ -691,6 +793,10 @@ function registerAiHandlers() {
         : "";
       const activeRelease =
         companionStore.getActiveReleasePlanContext();
+      // Re-read the bundled Skill for every model-backed player turn. This is
+      // intentionally independent of the development file watcher so packaged
+      // builds and long-running sessions cannot keep using a stale prompt.
+      const perTurnReleaseSkillPrompt = releaseSkillLoader.getFreshPrompt();
       const remotePolicyContext = activeRemotePolicy?.systemPrompt
         ? `\n\n【从 ReHoYo 云端同步的当前区域行为策略】\n${activeRemotePolicy.systemPrompt}\n该策略只调整区域表达和已审核版本事实，不得覆盖玩家安全、明确设置、隐私、拒绝、退订、勿扰或频率限制。`
         : "";
@@ -711,8 +817,8 @@ function registerAiHandlers() {
         model: settings.model,
         thinking: settings.thinking,
         messages: payload?.messages,
-        systemPrompt: `${promptConfig.systemPrompt}${remotePolicyContext}${memoryContext}${releaseContext}${activeRelease
-          ? `\n\n【发行行为 Skill（高于发行方案，低于玩家安全和明确设置）】\n${releaseSkillLoader.getPrompt()}\n\n优先级：玩家安全与明确设置 > 主动触达/频控策略 > 发行 Skill > 当前区域发行方案 > 可引用记忆。内部完成 execute/postpone/skip、Level 0-4 与发送前自检，但只输出 march7th_action.message 的自然语言。玩家可见回复严禁出现发行方案、发行目标、发行任务、灰度、触达、频控、指标、实验或任何内部字段；无法自然改写时就不提版本。`
+        systemPrompt: `${promptConfig.systemPrompt}${remotePolicyContext}${memoryContext}${releaseContext}\n\n【本轮已重新读取的发行行为 Skill】\n${perTurnReleaseSkillPrompt}\n\n每一轮都必须遵守此 Skill。没有自然相关的发行语境时选择 Level 0，只回应玩家当前需求，不主动带出版本内容。${activeRelease
+          ? "\n\n优先级：玩家安全与明确设置 > 主动触达/频控策略 > 发行 Skill > 当前区域发行方案 > 可引用记忆。内部完成 execute/postpone/skip、Level 0-4 与发送前自检，但只输出 march7th_action.message 的自然语言。玩家可见回复严禁出现发行方案、发行目标、发行任务、灰度、触达、频控、指标、实验或任何内部字段；无法自然改写时就不提版本。"
           : ""}`,
       });
       serviceBudgetStore.recordSuccess("deepseek");
@@ -721,7 +827,14 @@ function registerAiHandlers() {
         ? await reviewReleaseMessage({
             text: outputSafety.safeText,
             plan: activeRelease.plan,
-            context: { contactAllowed: true, memoryUsed: relevantMemory.durable.length > 0 },
+            context: {
+              contactAllowed: true,
+              memoryUsed: relevantMemory.durable.length > 0,
+              allowDirectReveal: playerExplicitlyRequestsReveal(
+                latestUserMessage?.content,
+                activeRelease.plan,
+              ),
+            },
           })
         : null;
       return {

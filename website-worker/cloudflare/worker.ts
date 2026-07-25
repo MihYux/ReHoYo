@@ -54,9 +54,12 @@ type GlobalPetCommand = {
   publishedAt: string;
   rolloutPercent: number;
   delivery: {
-    messageMode: "casual_check_in";
+    messageMode: "casual_check_in" | "release_context";
     frequencyBypass: true;
+    demoMode: boolean;
   };
+  region?: PetPolicy["region"];
+  plan?: PetPolicy["plan"];
   checksum: string;
 };
 
@@ -179,18 +182,28 @@ function normalizeCommand(value: unknown): Omit<GlobalPetCommand, "checksum"> {
   const rolloutPercent = Number(input.rolloutPercent);
   if (input.schemaVersion !== 1) throw new Error("Unsupported command contract");
   if (!Number.isInteger(rolloutPercent) || rolloutPercent < 1 || rolloutPercent > 100) throw new Error("rolloutPercent must be 1-100");
-  if (!delivery || delivery.messageMode !== "casual_check_in" || delivery.frequencyBypass !== true) {
+  const demoMode = delivery?.demoMode === true;
+  const expectedMessageMode = demoMode ? "release_context" : "casual_check_in";
+  if (!delivery || delivery.messageMode !== expectedMessageMode || delivery.frequencyBypass !== true) {
     throw new Error("delivery is invalid");
   }
+  const demoPolicy = demoMode ? normalizePolicy({
+    ...input,
+    policyVersion: input.commandVersion,
+    delivery: { messageMode: "casual_check_in", frequencyBypass: true },
+    systemPrompt: "Validated demo release context.",
+  }) : null;
   return {
     schemaVersion: 1,
     commandVersion: stringField(input.commandVersion, "commandVersion", 160),
     publishedAt: stringField(input.publishedAt, "publishedAt", 64),
     rolloutPercent,
     delivery: {
-      messageMode: "casual_check_in",
+      messageMode: expectedMessageMode,
       frequencyBypass: true,
+      demoMode,
     },
+    ...(demoPolicy ? { region: demoPolicy.region, plan: demoPolicy.plan } : {}),
   };
 }
 
@@ -258,10 +271,7 @@ async function publishPolicy(request: Request, env: Env, code: string) {
 }
 
 async function readGlobalCommand(request: Request, env: Env) {
-  const result = await env.PET_POLICIES.getWithMetadata<GlobalPetCommand, CommandMetadata>(GLOBAL_COMMAND_KEY, {
-    type: "json",
-    cacheTtl: 60,
-  });
+  const result = await env.PET_POLICIES.getWithMetadata<GlobalPetCommand, CommandMetadata>(GLOBAL_COMMAND_KEY, { type: "json" });
   if (!result.value) return json({ error: "COMMAND_NOT_FOUND" }, { status: 404, headers: publicHeaders('"missing"') });
   const etag = `"${result.value.checksum}"`;
   if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: publicHeaders(etag) });

@@ -4,6 +4,7 @@ import {
   type CSSProperties,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -33,6 +34,7 @@ import type {
 } from "./ai/types";
 import { decodePcm16LeBase64 } from "./audio/pcm";
 import { createRevealPlan } from "./ui/reveal";
+import { calculatePetStageTop } from "./ui/pet-layout";
 import { calculateWindowDragPosition } from "./ui/window-drag";
 import {
   getMarchReply,
@@ -213,6 +215,10 @@ function App() {
   const [petDefaultScale, setPetDefaultScale] =
     useState(PET_DEFAULT_SCALE);
   const [bubbleChatOpen, setBubbleChatOpen] = useState(false);
+  const [speechBubbleVisible, setSpeechBubbleVisible] =
+    useState(false);
+  const [cloudflareReleaseMessageId, setCloudflareReleaseMessageId] =
+    useState<string | null>(null);
   const [panelTab, setPanelTab] = useState<PanelTab>("model");
   const [input, setInput] = useState("");
   const [pinned, setPinned] = useState(true);
@@ -236,6 +242,7 @@ function App() {
   const nextMessageId = useRef(2);
   const inputRef = useRef<HTMLInputElement>(null);
   const bubbleInputRef = useRef<HTMLInputElement>(null);
+  const speechAreaRef = useRef<HTMLElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const voiceSessionRef = useRef<ActiveVoiceSession | null>(null);
   const revealRunIdRef = useRef(0);
@@ -250,6 +257,32 @@ function App() {
   const [desktopStatus, setDesktopStatus] =
     useState<DesktopWindowStatus | null>(null);
   const [activityNow, setActivityNow] = useState(() => new Date());
+  const [petStageTop, setPetStageTop] = useState(93);
+
+  useLayoutEffect(() => {
+    if (windowMode !== "pet" || !speechBubbleVisible) {
+      setPetStageTop(93);
+      return;
+    }
+
+    const speechArea = speechAreaRef.current;
+    if (!speechArea) return;
+
+    const updatePetStageTop = () => {
+      setPetStageTop(
+        calculatePetStageTop(
+          speechArea.offsetTop,
+          speechArea.offsetHeight,
+        ),
+      );
+    };
+
+    updatePetStageTop();
+    const resizeObserver = new ResizeObserver(updatePetStageTop);
+    resizeObserver.observe(speechArea);
+
+    return () => resizeObserver.disconnect();
+  }, [speechBubbleVisible, windowMode]);
 
   useEffect(() => {
     if (windowMode === "panel" && panelTab === "chat") {
@@ -427,7 +460,15 @@ function App() {
       void window.marchDesktop?.setMode("panel");
     };
     desktop.onNavigate(openRoute);
-    desktop.onCompanionDataChange(setCompanionData);
+    desktop.onCompanionDataChange((data, delivery) => {
+      setCompanionData(data);
+      if (
+        delivery?.source === "cloudflare" &&
+        delivery.messageId
+      ) {
+        setCloudflareReleaseMessageId(delivery.messageId);
+      }
+    });
     return () => {
       desktop.clearNavigateListener();
       desktop.clearCompanionDataChangeListener();
@@ -579,6 +620,7 @@ function App() {
     setBubble(text);
     setBubbleSpeechText(text);
     setMood(nextMood);
+    setSpeechBubbleVisible(true);
   };
 
   const revealReply = useCallback(
@@ -727,8 +769,10 @@ function App() {
   );
 
   useEffect(() => {
+    if (!cloudflareReleaseMessageId) return;
     const releaseMessage = companionData?.messages.find(
       (message) =>
+        message.id === cloudflareReleaseMessageId &&
         Boolean(message.sentAt) &&
         message.trace?.ruleIds?.includes("release.regional_plan_received"),
     );
@@ -739,6 +783,7 @@ function App() {
       releaseMessage.id
     ) {
       lastReleaseChatMessageRef.current = releaseMessage.id;
+      setCloudflareReleaseMessageId(null);
       return;
     }
     lastReleaseChatMessageRef.current = releaseMessage.id;
@@ -761,7 +806,8 @@ function App() {
     );
     setBubbleChatOpen(true);
     speak(releaseMessage.body, "soft");
-  }, [companionData]);
+    setCloudflareReleaseMessageId(null);
+  }, [cloudflareReleaseMessageId, companionData]);
 
   const registerPlayerInteraction = useCallback(() => {
     void window.marchDesktop?.companion
@@ -916,6 +962,7 @@ function App() {
       setPanelTab("chat");
       return;
     }
+    setSpeechBubbleVisible(true);
     setBubbleChatOpen(true);
   };
 
@@ -1214,6 +1261,7 @@ function App() {
               "--pet-scale": renderedPetScale,
               "--pet-base-width": `${petWindowConfig.baseWidth}px`,
               "--pet-base-height": `${petWindowConfig.baseHeight}px`,
+              "--pet-stage-top": `${petStageTop}px`,
             } as CSSProperties)
           : undefined
       }
@@ -1266,8 +1314,9 @@ function App() {
         </nav>
       )}
 
-      {windowMode === "pet" && (
+      {windowMode === "pet" && speechBubbleVisible && (
         <section
+          ref={speechAreaRef}
           className="speech-area"
           aria-live="polite"
           aria-hidden={modalActive}
