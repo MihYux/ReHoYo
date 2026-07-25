@@ -47,7 +47,8 @@ export interface CharacterPlanRelease {
   checksum: string;
   status: "published";
   publishedAt: string;
-  channel?: "local_bridge" | "cloudflare_kv";
+  channel?: "local_bridge" | "cloudflare_kv" | "cloudflare_realtime";
+  releaseMode?: "regional_gray" | "global_realtime";
 }
 
 export interface CharacterRegionWorkspace {

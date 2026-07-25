@@ -89,6 +89,16 @@
 .publishActions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
 .example { min-height: 40px; padding: 8px 15px; border: 1px solid var(--march); border-radius: 5px; background: var(--march); color: #fff; cursor: pointer; }
 .example:disabled { opacity: .45; cursor: not-allowed; }
+.coverage { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; padding: 13px 16px; border: 1px solid; border-radius: 6px; }
+.coverage b { font-size: 12px; }
+.coverage span { font-size: 11px; }
+.coverageReady { border-color: #c6ded1; background: var(--green-wash); color: var(--green); }
+.coverageError { border-color: #e6c6c4; background: var(--red-wash); color: var(--red); }
+.receipt { margin-top: 18px; }
+.receiptGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; padding: 1px; background: var(--line); }
+.receiptGrid div { display: flex; flex-direction: column; gap: 5px; padding: 16px; background: #fff; }
+.receiptGrid span { color: var(--faint); font-size: 10px; }
+.receiptGrid b { font: 600 22px var(--font-mono); }
 
 .bars { height: 260px; display: flex; align-items: flex-end; gap: 20px; padding: 28px 30px 20px; }
 .bars > div { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
@@ -123,6 +133,15 @@
 .dialog header span { color: var(--march); font: 9px var(--font-mono); letter-spacing: .1em; }
 .dialog header h2 { margin: 3px 0 0; }
 .dialog header button { border: 0; background: transparent; cursor: pointer; }
+.confirmBody { display: flex; flex-direction: column; gap: 18px; padding: 22px; }
+.confirmBody > p { margin: 0; color: var(--muted); }
+.confirmBody dl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
+.confirmBody dl div { padding: 12px; border: 1px solid var(--line); border-radius: 5px; }
+.confirmBody dt { color: var(--faint); font-size: 10px; }
+.confirmBody dd { margin: 5px 0 0; overflow-wrap: anywhere; font-weight: 600; }
+.confirmWarning { display: flex; align-items: flex-start; gap: 10px; padding: 13px; border-radius: 5px; background: var(--march-wash); color: var(--march); }
+.confirmWarning svg { flex: 0 0 auto; margin-top: 1px; }
+.dialogActions { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 22px 22px; border-top: 1px solid var(--line); }
 .regionOptions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 18px 22px; }
 .regionOptions button { min-height: 66px; display: grid; grid-template-columns: 42px 1fr 20px; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; text-align: left; cursor: pointer; }
 .regionOptions button.selected { border-color: var(--march); background: var(--march-wash); }

@@ -9,6 +9,28 @@ export type PetPolicyPublishResult = {
   publishedAt: string;
 };
 
+export type RealtimeReleaseStatus = {
+  batchId: string;
+  onlineConnections: number;
+  notified: number;
+  received: number;
+  generated: number;
+  degraded: number;
+  suppressed: number;
+  failed: number;
+  shardFailures: number;
+};
+
+export type GlobalReleasePublishResult = {
+  ok: true;
+  batchId: string;
+  researchRunId: string;
+  checksum: string;
+  publishedAt: string;
+  expiresAt: string;
+  status: RealtimeReleaseStatus;
+};
+
 export function buildRegionalSystemPrompt(region: CharacterReleaseRegion, task: CharacterReleaseTask) {
   const facts = task.facts.map((fact) => `- ${fact.label}：${fact.value}`).join("\n") || "- 当前没有可主动引用的版本事实。";
   return `【${region.name}区域行为策略 · ${task.title}】
@@ -114,4 +136,78 @@ export async function publishPetPolicy(input: {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function publishGlobalReleaseBatch(input: {
+  batchId: string;
+  researchRunId: string;
+  publishedAt: string;
+  expiresAt: string;
+  entries: Array<{ region: CharacterReleaseRegion; task: CharacterReleaseTask }>;
+}) {
+  const settings = readOperatorSettingsSync();
+  if (!settings.delivery.publishToken) throw new Error("尚未配置 Worker 发布令牌，请先在“连接设置”页面粘贴并保存。");
+  const regions = Object.fromEntries(input.entries.map(({ region, task }) => [region.code.toUpperCase(), {
+    delivery: { messageMode: "release_context", frequencyBypass: true },
+    region: {
+      id: region.id,
+      code: region.code.toUpperCase(),
+      name: region.name,
+      language: region.language,
+      timeZone: region.timeZone,
+      quietHours: region.quietHours,
+    },
+    plan: {
+      id: task.id,
+      title: task.title,
+      objective: task.objective,
+      theme: task.theme,
+      narrative: task.narrative,
+      timeWindow: task.timeWindow,
+      facts: task.facts,
+    },
+    systemPrompt: buildRegionalSystemPrompt(region, task),
+  }]));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const response = await fetch(`${PET_POLICY_SERVICE_URL}/api/v2/release-batches/current`, {
+      method: "PUT",
+      signal: controller.signal,
+      headers: {
+        authorization: `Bearer ${settings.delivery.publishToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        schemaVersion: 2,
+        batchId: input.batchId,
+        researchRunId: input.researchRunId,
+        publishedAt: input.publishedAt,
+        expiresAt: input.expiresAt,
+        rolloutPercent: 100,
+        delivery: { messageMode: "release_context", frequencyBypass: true, requiresDeepSeekThinking: true },
+        regions,
+      }),
+    });
+    const result = await response.json().catch(() => null) as (GlobalReleasePublishResult & { error?: string; message?: string }) | null;
+    if (!response.ok || !result?.ok) throw new Error(`全球实时发行失败（HTTP ${response.status}）：${result?.message || result?.error || "Worker 未返回有效结果"}`);
+    return result;
+  } catch (error) {
+    if ((error as Error).name === "AbortError") throw new Error("全球实时发行超时，请检查 Worker 连接后重试。");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function readGlobalReleaseStatus(batchId: string) {
+  const settings = readOperatorSettingsSync();
+  if (!settings.delivery.publishToken) throw new Error("尚未配置 Worker 发布令牌。");
+  const response = await fetch(`${PET_POLICY_SERVICE_URL}/api/v2/release-batches/${encodeURIComponent(batchId)}/status`, {
+    headers: { authorization: `Bearer ${settings.delivery.publishToken}`, accept: "application/json" },
+    cache: "no-store",
+  });
+  const result = await response.json().catch(() => null) as { ok?: boolean; status?: RealtimeReleaseStatus; error?: string } | null;
+  if (!response.ok || !result?.ok || !result.status) throw new Error(`实时回执读取失败（HTTP ${response.status}）：${result?.error || "Worker 未返回有效结果"}`);
+  return result.status;
 }

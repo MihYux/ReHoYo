@@ -3,8 +3,9 @@ import {
   createImportedCharacterReleaseTask,
   parseCharacterReleaseMarkdown,
   repairSnapshotMetadata,
+  resolveGlobalReleaseBatch,
 } from "@/lib/character-release";
-import type { CharacterReleaseSnapshot } from "@/lib/character-release-types";
+import type { CharacterReleaseRegion, CharacterReleaseSnapshot } from "@/lib/character-release-types";
 
 const markdown = `# 崩坏：星穹铁道 · 2.0 · 角色共生发行方案
 
@@ -74,5 +75,52 @@ describe("character release imports", () => {
     expect(snapshot.auditLog[0].action).toBe("task.metadata_repaired");
     repairSnapshotMetadata(snapshot);
     expect(snapshot.auditLog.filter((item) => item.action === "task.metadata_repaired")).toHaveLength(1);
+  });
+});
+
+function region(id: string, code: string, name: string): CharacterReleaseRegion {
+  return {
+    id, sourceRegionId: id, code, name, language: "zh-CN", timeZone: "Asia/Shanghai",
+    quietHours: { start: "22:00", end: "08:00" }, releaseAgents: [], segments: [],
+  };
+}
+
+describe("global realtime release coverage", () => {
+  it("selects the newest ready task from the same research run in every region", () => {
+    const cnOld = createImportedCharacterReleaseTask("cn", "cn-old.md", markdown, { researchRunId: "run-global" });
+    const cnNew = createImportedCharacterReleaseTask("cn", "cn-new.md", markdown, { researchRunId: "run-global" });
+    const jp = createImportedCharacterReleaseTask("jp", "jp.md", markdown.replace("中国大陆区域", "日本区域"), { researchRunId: "run-global" });
+    cnOld.id = "cn-old"; cnOld.updatedAt = "2026-07-24T00:00:00.000Z";
+    cnNew.id = "cn-new"; cnNew.updatedAt = "2026-07-25T00:00:00.000Z";
+    jp.id = "jp-task";
+    const snapshot: CharacterReleaseSnapshot = {
+      schemaVersion: 1, activeRegionId: "cn", regions: [region("cn", "CN", "中国大陆"), region("jp", "JP", "日本")],
+      workspaces: {
+        cn: { regionId: "cn", tasks: [cnOld, cnNew], releases: [], emergencyStoppedAt: null },
+        jp: { regionId: "jp", tasks: [jp], releases: [], emergencyStoppedAt: null },
+      },
+      auditLog: [], updatedAt: "2026-07-25T00:00:00.000Z",
+    };
+    const coverage = resolveGlobalReleaseBatch(snapshot, "cn", "cn-new");
+    expect(coverage.missing).toEqual([]);
+    expect(coverage.entries.map((item) => item.task.id)).toEqual(["cn-new", "jp-task"]);
+  });
+
+  it("blocks missing, mismatched, and paused regions", () => {
+    const cn = createImportedCharacterReleaseTask("cn", "cn.md", markdown, { researchRunId: "run-global" });
+    const jp = createImportedCharacterReleaseTask("jp", "jp.md", markdown, { researchRunId: "another-run" });
+    const snapshot: CharacterReleaseSnapshot = {
+      schemaVersion: 1, activeRegionId: "cn", regions: [region("cn", "CN", "中国大陆"), region("jp", "JP", "日本")],
+      workspaces: {
+        cn: { regionId: "cn", tasks: [cn], releases: [], emergencyStoppedAt: null },
+        jp: { regionId: "jp", tasks: [jp], releases: [], emergencyStoppedAt: "2026-07-25T00:00:00.000Z" },
+      },
+      auditLog: [], updatedAt: "2026-07-25T00:00:00.000Z",
+    };
+    expect(resolveGlobalReleaseBatch(snapshot, "cn", cn.id).missing).toEqual([
+      { regionId: "jp", regionName: "日本", reason: "区域已暂停" },
+    ]);
+    snapshot.workspaces.jp.emergencyStoppedAt = null;
+    expect(resolveGlobalReleaseBatch(snapshot, "cn", cn.id).missing[0].reason).toBe("缺少同批次已审核策略");
   });
 });

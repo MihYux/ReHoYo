@@ -11,7 +11,7 @@ import type {
   CharacterReleaseTaskInput,
 } from "@/lib/character-release-types";
 import { releaseMetadataReason, validatePlayerVisibleReleaseFields } from "@/lib/release-content-safety";
-import { publishPetPolicy } from "@/lib/pet-policy-publisher";
+import { publishGlobalReleaseBatch, publishPetPolicy } from "@/lib/pet-policy-publisher";
 
 const DATA_DIR = path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.DATA_DIR || ".data");
 const WORKSPACE_PATH = path.join(DATA_DIR, "character-release-workspace.json");
@@ -334,6 +334,96 @@ export async function publishCharacterRelease(regionId: string, taskId: string, 
     audit(data, regionId, exampleMode ? "plan.example_published" : "plan.published", release.id, `${percent}% · Cloudflare KV · ${deliveryId}`);
     await writeSnapshot(data);
     return clone(data);
+  });
+}
+
+export type GlobalReleaseCoverage = {
+  researchRunId: string;
+  entries: Array<{ region: CharacterReleaseRegion; task: CharacterReleaseTask }>;
+  missing: Array<{ regionId: string; regionName: string; reason: string }>;
+};
+
+/** Resolve one immutable, reviewed task per configured region for the current research run. */
+export function resolveGlobalReleaseBatch(data: CharacterReleaseSnapshot, regionId: string, taskId: string): GlobalReleaseCoverage {
+  const currentTask = data.workspaces[regionId]?.tasks.find((item) => item.id === taskId);
+  const researchRunId = currentTask?.sourceDocument?.researchRunId?.trim() || "";
+  const entries: GlobalReleaseCoverage["entries"] = [];
+  const missing: GlobalReleaseCoverage["missing"] = [];
+
+  if (!currentTask) {
+    return { researchRunId, entries, missing: [{ regionId, regionName: regionId, reason: "当前任务不存在" }] };
+  }
+  if (!researchRunId) {
+    return { researchRunId, entries, missing: [{ regionId, regionName: data.regions.find((item) => item.id === regionId)?.name || regionId, reason: "当前任务缺少研究批次" }] };
+  }
+
+  for (const region of data.regions) {
+    const workspace = data.workspaces[region.id];
+    if (!workspace) {
+      missing.push({ regionId: region.id, regionName: region.name, reason: "区域工作区不存在" });
+      continue;
+    }
+    if (workspace.emergencyStoppedAt) {
+      missing.push({ regionId: region.id, regionName: region.name, reason: "区域已暂停" });
+      continue;
+    }
+    const task = workspace.tasks
+      .filter((item) => item.status === "ready" && item.sourceDocument?.researchRunId === researchRunId)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    if (!task) {
+      missing.push({ regionId: region.id, regionName: region.name, reason: "缺少同批次已审核策略" });
+      continue;
+    }
+    entries.push({ region, task });
+  }
+  return { researchRunId, entries, missing };
+}
+
+export async function publishGlobalCharacterRelease(regionId: string, taskId: string, configs: RegionConfig[]) {
+  return serial(async () => {
+    const data = reconcile(await readSnapshot(), configs);
+    const coverage = resolveGlobalReleaseBatch(data, regionId, taskId);
+    if (!coverage.researchRunId) throw new Error("当前任务缺少 researchRunId，无法组成全球实时发行批次。");
+    if (coverage.missing.length) {
+      throw new Error(`全球批次不完整：${coverage.missing.map((item) => `${item.regionName}（${item.reason}）`).join("、")}`);
+    }
+    for (const { region, task } of coverage.entries) {
+      const fieldValidation = validatePlayerVisibleReleaseFields(task);
+      if (!fieldValidation.valid) {
+        const detail = fieldValidation.errors.map((item) => `${item.field}: ${item.reason}`).join("；");
+        throw new Error(`${region.name}发行内容包含后台元数据，已阻止全球发行：${detail}`);
+      }
+    }
+
+    const publishedAt = now();
+    const expiresAt = new Date(Date.parse(publishedAt) + 24 * 60 * 60 * 1000).toISOString();
+    const batchId = id("delivery");
+    const remote = await publishGlobalReleaseBatch({
+      batchId,
+      researchRunId: coverage.researchRunId,
+      publishedAt,
+      expiresAt,
+      entries: coverage.entries,
+    });
+
+    for (const { region, task } of coverage.entries) {
+      const release: CharacterPlanRelease = {
+        id: id("release"), deliveryId: batchId, regionId: region.id, taskId: task.id,
+        rolloutPercent: 100, exampleMode: false, checksum: remote.checksum,
+        status: "published", publishedAt, channel: "cloudflare_realtime", releaseMode: "global_realtime",
+      };
+      data.workspaces[region.id].releases.unshift(release);
+      audit(data, region.id, "plan.global_realtime_published", release.id, `100% · ${coverage.researchRunId} · ${batchId}`);
+    }
+    await writeSnapshot(data);
+    return {
+      data: clone(data),
+      batch: {
+        batchId, researchRunId: coverage.researchRunId, publishedAt, expiresAt,
+        checksum: remote.checksum, regionCount: coverage.entries.length,
+      },
+      status: remote.status,
+    };
   });
 }
 
