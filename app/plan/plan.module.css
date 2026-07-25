@@ -71,7 +71,9 @@
 .pipeEditor label span { color: var(--faint); font-weight: 400; }
 .noCharacter { padding: 28px; color: var(--muted); }
 .approvalBar { min-height: 74px; padding: 14px 22px 14px 28px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); background: var(--surface-muted); }
-.approvalBar > div { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.approvalCopy { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.approvalActions { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.approvalActions button { flex: 0 0 auto; }
 .approvedText { display: flex; align-items: center; gap: 6px; color: var(--green); font-weight: 600; }
 .qualityRail { position: sticky; top: 92px; min-height: 720px; border-left: 1px solid var(--line); background: var(--surface-muted); }
 .quality { min-height: 44px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
@@ -232,6 +234,8 @@
 
 @media (max-width: 1350px) {
   .planWorkspace { grid-template-columns: 176px minmax(0, 1fr) 280px; }
+  .approvalBar { align-items: flex-start; gap: 14px; }
+  .approvalActions { flex-direction: column; align-items: flex-end; }
   .sourceFilters > div { grid-template-columns: auto 1fr 1fr; }
   .sourceFilters > div select:last-child { grid-column: 2 / -1; }
 }

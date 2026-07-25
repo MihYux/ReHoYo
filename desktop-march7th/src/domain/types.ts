@@ -264,6 +264,29 @@ export interface MessageTrace {
   knowledgeChunkIds?: string[];
   memoryIds: string[];
   generatedAt: string;
+  preflight?: ReleaseMessagePreflightSummary;
+}
+
+export type ReleasePreflightDimension =
+  | "metadata_leakage"
+  | "factual_grounding"
+  | "march7th_persona"
+  | "context_and_naturalness"
+  | "player_autonomy"
+  | "privacy_and_memory"
+  | "regional_fit"
+  | "safety_and_manipulation"
+  | "contact_policy"
+  | "clarity_and_readability";
+
+export interface ReleaseMessagePreflightSummary {
+  decision: "execute" | "rewrite" | "skip";
+  dimensions: Record<ReleasePreflightDimension, { status: "pass" | "fail"; reasonCode: string }>;
+  reasonCodes: string[];
+  rewriteCount: number;
+  reviewMode: "hybrid" | "local_fallback";
+  model: string;
+  degraded: boolean;
 }
 
 export interface CharacterMessage {

@@ -1,3 +1,5 @@
+const { metadataReason } = require("./release-content-safety.cjs");
+
 const INPUT_RULES = Object.freeze([
   {
     id: "prompt_injection",
@@ -111,6 +113,14 @@ function reviewCharacterOutput(text) {
     typeof text === "string" ? text.trim().slice(0, 1_500) : "";
   const matched = OUTPUT_RULES.filter((rule) => rule.pattern.test(cleanText));
   const matchedRules = matched.map((rule) => rule.id);
+  const metadata = metadataReason(cleanText, "narrative");
+  if (metadata && metadata !== "empty") matchedRules.push(`release_metadata.${metadata}`);
+  if (/(?:由三月七以.{0,16}视角|激发玩家|提升玩家|引导玩家|目标玩家|本次发行目标|发行任务目标)/.test(cleanText)) {
+    matchedRules.push("release_objective_as_dialogue");
+  }
+  if (/和[“"]?[^”"。]{20,}[”"]?有关的(?:新鲜事|消息)/.test(cleanText)) {
+    matchedRules.push("release_template_interpolation");
+  }
   const ruleSpecificReply = matched.find((rule) => rule.reply)?.reply;
   return {
     allowed: cleanText.length > 0 && matchedRules.length === 0,

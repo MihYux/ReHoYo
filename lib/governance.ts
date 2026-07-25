@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
+import { ProjectInputSchema } from "@/lib/contracts";
 import type {
   BudgetEnvelope,
   HumanContract,
   ProjectSnapshot,
   QualityViolation,
   RegionConfig,
+  RegionalCharacterSymbiosisPlan,
   ReleasePlan,
   ResearchCitation,
   VersionBrief,
@@ -209,7 +211,33 @@ export function validateRegionalAnalysis(region: RegionConfig, citations: Resear
 }
 
 export function fingerprintInputs(project: ProjectSnapshot, regions: RegionConfig[], citations: ResearchCitation[]) {
-  return stableHash(JSON.stringify({ projectUpdatedAt: project.updatedAt, brief: project.brief, regions: regions.map((r) => [r.id, r.status, r.analysis?.generatedAt]), snapshots: citations.map((c) => c.id).sort() }));
+  const projectInputs = ProjectInputSchema.parse(project);
+  const selectedRegions = regions
+    .filter((region) => region.selected)
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((region) => [region.id, region.status, region.analysis?.generatedAt || ""]);
+  return stableHash(JSON.stringify({ project: projectInputs, brief: project.brief, regions: selectedRegions, snapshots: citations.map((citation) => citation.id).sort() }));
+}
+
+export function validateMarch7Symbiosis(plan: RegionalCharacterSymbiosisPlan) {
+  const violations: QualityViolation[] = [];
+  const planText = [
+    plan.symbiosisObjective,
+    ...plan.characterSuitableVersionMessages,
+    ...plan.communicationEntryPointsAndScenes,
+    ...plan.expectedEffectsAndMetrics,
+  ].join("\n");
+  if (!planText.includes("黑天鹅")) violations.push(hard("MISSING_BLACK_SWAN", "SYMBIOSIS-NARRATIVE-001", `${plan.regionName}共生方案必须由三月七介绍黑天鹅。`, "plan.characterSymbiosisRelease"));
+  if (!planText.includes("匹诺康尼")) violations.push(hard("MISSING_PENACONY_INTEREST", "SYMBIOSIS-OBJECTIVE-001", `${plan.regionName}共生方案必须以激发玩家对匹诺康尼的兴趣为目标。`, "plan.characterSymbiosisRelease"));
+  plan.characterTasks.forEach((task, index) => {
+    const path = `plan.characterSymbiosisRelease.${plan.regionId}.characterTasks.${index}`;
+    if (task.character.trim() !== "三月七") violations.push(hard("INVALID_SYMBIOSIS_CHARACTER", "SYMBIOSIS-CHARACTER-001", `${plan.regionName}共生角色只能是三月七。`, path));
+    const perspective = `${task.objective}${task.versionMessage}${task.communicationAngle}`;
+    if (!perspective.includes("黑天鹅") || !perspective.includes("匹诺康尼") || !/(我|我们|第一人称)/.test(perspective)) {
+      violations.push(hard("INVALID_MARCH7_PERSPECTIVE", "SYMBIOSIS-NARRATIVE-002", `${plan.regionName}角色任务必须以三月七第一人称介绍黑天鹅，并引向匹诺康尼。`, path, true));
+    }
+  });
+  return violations;
 }
 
 export function validatePlanApproval(project: ProjectSnapshot, regions: RegionConfig[], citations: ResearchCitation[], plan: ReleasePlan) {
@@ -227,6 +255,7 @@ export function validatePlanApproval(project: ProjectSnapshot, regions: RegionCo
   const validSnapshots = new Set(citations.map((item) => item.id));
   if (plan.sourceIds.some((id) => !validSnapshots.has(id))) violations.push(hard("INVALID_PLAN_SOURCE", "PLAN-PROVENANCE-001", "方案引用了不存在的证据快照。", "plan.sourceIds"));
   symbiosisPlans.forEach((item, index) => {
+    violations.push(...validateMarch7Symbiosis(item));
     if (item.sourceIds.some((id) => !validSnapshots.has(id))) violations.push(hard("INVALID_SYMBIOSIS_SOURCE", "SYMBIOSIS-PROVENANCE-001", `${item.regionName}角色共生任务引用了无效证据。`, `plan.characterSymbiosisRelease.${index}.sourceIds`));
     for (let peerIndex = index + 1; peerIndex < symbiosisPlans.length; peerIndex += 1) {
       const peer = symbiosisPlans[peerIndex];

@@ -14,7 +14,7 @@ import styles from "./character-release.module.css";
 type Step = "tasks" | "region" | "release" | "optimization";
 type NewRegion = { code: string; name: string; language: string; timezone: string };
 const steps: Array<{ id: Step; number: string; label: string; note: string; icon: typeof Globe }> = [
-  { id: "tasks", number: "01", label: "版本任务", note: "同步并审核单区域方案", icon: FileArrowUp },
+  { id: "tasks", number: "01", label: "版本任务", note: "同步并编辑单区域方案", icon: FileArrowUp },
   { id: "region", number: "02", label: "区域数据", note: "确认授权与执行边界", icon: Globe },
   { id: "release", number: "03", label: "灰度发布", note: "设置比例并交付桌宠", icon: PaperPlaneTilt },
   { id: "optimization", number: "04", label: "效果优化", note: "查看关系健康信号", icon: ChartLineUp },
@@ -62,6 +62,16 @@ export default function CharacterReleasePage() {
     setSelectedTaskId(first?.id || "");
     setDraft(first ? taskInput(first) : blankTask());
   }, [data?.activeRegionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!data) return;
+    const importedTaskId = new URLSearchParams(window.location.search).get("taskId");
+    if (!importedTaskId) return;
+    const imported = Object.values(data.workspaces).flatMap((item) => item.tasks).find((item) => item.id === importedTaskId);
+    if (!imported) return;
+    setSelectedTaskId(imported.id);
+    setDraft(taskInput(imported));
+  }, [data]);
 
   const mutate = async (key: string, action: () => Promise<CharacterReleaseSnapshot>, success: string) => {
     setBusy(key); setNotice(null);
@@ -170,7 +180,7 @@ function TasksStep({ workspace, draft, setDraft, task, chooseTask, syncPlan, sav
   return <>
     <div className={styles.sectionLead}><div><span>区域方案入口</span><h2>每次同步都形成新的可追溯版本</h2><p>自动同步使用策略 ZIP 中当前区域对应的单份角色共生 Markdown；旧任务和发布记录不会被覆盖。</p></div><div><button className="button" onClick={importFile} disabled={Boolean(busy)}><FileArrowUp />手动导入</button><button className="button button-primary" onClick={syncPlan} disabled={Boolean(busy)}><Sparkle weight="fill" />同步当前区域</button></div></div>
     {tasks.length ? <div className={styles.taskStrip}>{tasks.map((item: CharacterReleaseTask) => <button key={item.id} className={item.id === task?.id ? styles.selected : ""} onClick={() => chooseTask(item)}><span>{item.status === "ready" ? "可发布" : "草稿"}</span><b>{item.title}</b><small>{item.sourceDocument?.name || item.updatedAt.slice(0, 10)}</small></button>)}</div> : null}
-    <section className={styles.card}><div className={styles.cardHead}><div><span>任务定义</span><h3>{draft.id ? "审核版本任务" : "新建版本任务"}</h3></div>{task?.sourceDocument ? <code>{task.sourceDocument.checksum.slice(0, 12)}</code> : null}</div>
+    <section className={styles.card}><div className={styles.cardHead}><div><span>任务定义</span><h3>{draft.id ? "编辑版本任务" : "新建版本任务"}</h3></div>{task?.sourceDocument ? <code>{task.sourceDocument.checksum.slice(0, 12)}</code> : null}</div>
       <div className={styles.form}><label><span>任务名称</span><input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label><label><span>发行目标</span><select value={draft.objective} onChange={(event) => setDraft({ ...draft, objective: event.target.value as ReleaseObjective })}><option value="preheat">版本预热</option><option value="launch">版本上线</option><option value="sustain">持续运营</option><option value="recall">玩家召回</option></select></label><label className={styles.wide}><span>共生发行主题</span><textarea value={draft.theme} onChange={(event) => setDraft({ ...draft, theme: event.target.value })} /></label><label className={styles.wide}><span>三月七叙事方式</span><textarea value={draft.narrative} onChange={(event) => setDraft({ ...draft, narrative: event.target.value })} /></label><label><span>时间窗口</span><input value={draft.timeWindow} onChange={(event) => setDraft({ ...draft, timeWindow: event.target.value })} /></label><label className={styles.consent}><input type="checkbox" checked={draft.consentConfirmed} onChange={(event) => setDraft({ ...draft, consentConfirmed: event.target.checked })} /><span>确认只使用玩家已授权的内容范围</span></label></div>
       <div className={styles.facts}>{draft.facts.map((fact, index) => <div key={fact.id}><input value={fact.label} onChange={(event) => setDraft({ ...draft, facts: draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) })} /><input value={fact.value} onChange={(event) => setDraft({ ...draft, facts: draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item) })} /><input value={fact.source} onChange={(event) => setDraft({ ...draft, facts: draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, source: event.target.value } : item) })} /></div>)}</div>
       <div className={styles.actions}><button className="button button-primary" onClick={saveTask} disabled={Boolean(busy)}><Check />保存版本任务</button></div>

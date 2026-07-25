@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildHumanContract, calculateEvidenceCutoff, canonicalizeUrl, parseBudgetEnvelope, scanRedlines, textSimilarity, validateEvidence, validatePlanApproval } from "@/lib/governance";
-import type { ProjectSnapshot, RegionConfig, ReleasePlan, ResearchCitation } from "@/lib/contracts";
+import { buildHumanContract, calculateEvidenceCutoff, canonicalizeUrl, fingerprintInputs, parseBudgetEnvelope, scanRedlines, textSimilarity, validateEvidence, validateMarch7Symbiosis, validatePlanApproval } from "@/lib/governance";
+import type { ProjectSnapshot, RegionConfig, RegionalCharacterSymbiosisPlan, ReleasePlan, ResearchCitation } from "@/lib/contracts";
 
 function project(overrides: Partial<ProjectSnapshot> = {}): ProjectSnapshot {
   const base = {
@@ -42,6 +42,37 @@ describe("governed regional intelligence", () => {
   it("detects highly repeated regional prose", () => {
     const common = "多数玩家关注苹果Metal与Vision Pro技术展示，因此发行需要突出相同的平台体验与全球福利。";
     expect(textSimilarity(common, `${common}并沿用相同素材。`)).toBeGreaterThan(0.42);
+  });
+
+  it("fingerprints business inputs without self-invalidating on audit timestamps or unselected regions", () => {
+    const selected = { id: "cn", selected: true, status: "quality_passed", analysis: { generatedAt: "2024-02-01" } } as RegionConfig;
+    const unselected = { id: "kr", selected: false, status: "draft" } as RegionConfig;
+    const before = fingerprintInputs(project({ updatedAt: "2024-02-01" }), [selected], [citation()]);
+    const afterSave = fingerprintInputs(project({ updatedAt: "2024-02-02" }), [unselected, selected], [citation()]);
+    const changedBudget = fingerprintInputs(project({ updatedAt: "2024-02-02", totalBudget: "总预算6,000万元", budgetConfirmed: true }), [selected], [citation()]);
+    expect(afterSave).toBe(before);
+    expect(changedBudget).not.toBe(before);
+  });
+
+  it("requires March 7th to introduce Black Swan from a first-person Penacony-interest objective", () => {
+    const plan = {
+      regionId: "cn",
+      regionName: "中国大陆",
+      symbiosisObjective: "由三月七以同行者视角介绍黑天鹅，激发玩家对匹诺康尼的兴趣。",
+      targetPlayerGroups: ["剧情玩家"],
+      characterSuitableVersionMessages: ["我想带你认识黑天鹅，也一起看看匹诺康尼。"],
+      communicationEntryPointsAndScenes: ["三月七以第一人称邀请玩家同行"],
+      recommendedTimingAndFrequency: ["上线前一周一次"],
+      toneExpressionAndCulturalNotes: ["好奇、真诚、不剧透"],
+      prohibitedBehaviorsAndRiskBoundaries: ["不替玩家下结论"],
+      expectedEffectsAndMetrics: ["玩家对匹诺康尼产生兴趣"],
+      characterTasks: [{ character: "三月七", objective: "我来介绍黑天鹅并邀请你探索匹诺康尼", playerSegment: "剧情玩家", versionMessage: "我在匹诺康尼遇见了黑天鹅", communicationAngle: "我想听听你怎么看", interactionScene: "桌宠对话", timing: "T-1", frequency: "每周一次", tone: "好奇", culturalNotes: ["不剧透"], prohibitedBehaviors: ["不强推"], riskBoundaries: ["拒绝后停止"], expectedEffect: "产生世界兴趣", metrics: [{ name: "兴趣率", target: "+5%", measurementWindow: "7天" }] }],
+      regionalStrategyLinks: ["连接区域剧情内容"],
+      sourceIds: ["snapshot-1"],
+    } satisfies RegionalCharacterSymbiosisPlan;
+    expect(validateMarch7Symbiosis(plan)).toEqual([]);
+    const broken = { ...plan, characterTasks: [{ ...plan.characterTasks[0], character: "黑天鹅", objective: "推动回流玩家开启主线", versionMessage: "新版本现已开放", communicationAngle: "强调开启主线" }] };
+    expect(validateMarch7Symbiosis(broken).map((item) => item.code)).toEqual(expect.arrayContaining(["INVALID_SYMBIOSIS_CHARACTER", "INVALID_MARCH7_PERSPECTIVE"]));
   });
 
   it("rejects the 11,696万元 overflow, stale input, and omission of Europe", () => {

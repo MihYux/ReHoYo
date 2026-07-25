@@ -1,4 +1,4 @@
-import { getProject } from "@/lib/db";
+import { getProject, setPlan } from "@/lib/db";
 import { apiError, ok } from "@/lib/http";
 
 export const runtime = "nodejs";
@@ -12,6 +12,10 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  await request.body?.cancel();
-  return Response.json({ error: "DIRECT_PLAN_EDIT_DISABLED", message: "Use the final plan chat agent to change the document." }, { status: 405 });
+  try {
+    const plan = await request.json();
+    return ok({ project: await setPlan(plan, "needs_review") });
+  } catch (error) {
+    return apiError(error);
+  }
 }

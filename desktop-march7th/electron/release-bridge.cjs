@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { validateReleasePlanFields } = require("./release-content-safety.cjs");
 
 function defaultBridgeRoot() {
   return process.env.MARCH7TH_BRIDGE_DIR
@@ -71,6 +72,10 @@ class ReleaseBridgeConsumer {
       }
       if (path.basename(name, ".json") !== parsed.deliveryId) throw new Error("Delivery filename mismatch");
       if (typeof checksum !== "string" || checksum !== deliveryChecksum(delivery)) throw new Error("Delivery checksum mismatch");
+      const contentValidation = validateReleasePlanFields(parsed.plan);
+      if (!contentValidation.valid) {
+        throw new Error(`Delivery contains internal metadata: ${contentValidation.errors.map((item) => `${item.field}:${item.reason}`).join(",")}`);
+      }
       const receiptPath = path.join(this.processedDir, `${parsed.deliveryId}.receipt.json`);
       if (!fs.existsSync(receiptPath)) {
         await this.onDelivery(delivery);

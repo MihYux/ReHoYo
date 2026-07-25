@@ -13,6 +13,7 @@ export async function GET(request: Request) {
   try {
     const [project, citations] = await Promise.all([getProject(), getCitations()]);
     if (!project.plan) throw new Error("当前没有可导出的发行策略。");
+    if (project.planStatus !== "approved") throw new Error("请先确认最终方案，再导出发行策略。");
     const regionId = new URL(request.url).searchParams.get("regionId");
     const region = regionId ? project.plan.regions.find((item) => item.regionId === regionId) : undefined;
     if (regionId && !region) throw new Error("指定区域不在当前发行策略中。");

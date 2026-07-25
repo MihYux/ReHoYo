@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowCounterClockwise, ArrowSquareOut, ArrowsInSimple, ArrowsOutSimple, CaretDown, CaretUp, Check, Database, DownloadSimple, Funnel, Info, MagnifyingGlass, PaperPlaneRight, Robot, Sparkle, UserCircle, Warning } from "@phosphor-icons/react";
-import type { CharacterReleasePlan, GenerationJob, PlanAgentRunRecord, PlanAgentStreamEvent, PlanGenerationPreview, RegionConfig, RegionReleasePlan, RegionalCharacterSymbiosisPlan, ReleasePlan, ResearchCitation } from "@/lib/contracts";
+import type { CharacterReleasePlan, CharacterSymbiosisTask, GenerationJob, PlanAgentRunRecord, PlanAgentStreamEvent, PlanGenerationPreview, RegionConfig, RegionReleasePlan, RegionalCharacterSymbiosisPlan, ReleasePlan, ResearchCitation } from "@/lib/contracts";
 import { useWorkspace } from "@/components/workspace-provider";
 import { StatusBadge } from "@/components/workspace-shell";
 import { SafeMarkdown } from "@/components/safe-markdown";
@@ -18,6 +19,7 @@ function requiresFreshGeneration(message: string) {
 
 export default function PlanPage() {
   const { data, refresh, request } = useWorkspace();
+  const router = useRouter();
   const [plan, setPlan] = useState<ReleasePlan | null>(null);
   const [activeRegionId, setActiveRegionId] = useState("");
   const [busy, setBusy] = useState("");
@@ -98,6 +100,7 @@ export default function PlanPage() {
         setAutoSaveState("自动保存中");
         await request("/api/plan", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(plan) });
         setDirty(false);
+        await refresh();
         setAutoSaveState(`已自动保存 ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`);
       } catch (nextError) {
         setAutoSaveState("自动保存失败");
@@ -105,18 +108,35 @@ export default function PlanPage() {
       }
     }, 1200);
     return () => window.clearTimeout(timer);
-  }, [busy, dirty, plan, request]);
+  }, [busy, dirty, plan, refresh, request]);
   useEffect(() => () => window.clearTimeout(highlightTimerRef.current), []);
   const activeIndex = plan?.regions.findIndex((region) => region.regionId === activeRegionId) ?? -1;
   const activeRegion = activeIndex >= 0 ? plan?.regions[activeIndex] : plan?.regions[0];
 
   if (!data) return null;
 
-  async function action(name: string, run: () => Promise<unknown>, success: string) {
-    setBusy(name); setError(""); setMessage("");
-    try { await run(); await refresh(); setMessage(success); }
-    catch (nextError) { setError((nextError as Error).message); }
-    finally { setBusy(""); }
+  async function approvePlan() {
+    setBusy("approve");
+    setError("");
+    setMessage("");
+    try {
+      if (!plan) throw new Error("请先生成发行方案。");
+      await request("/api/plan/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+      const next = await refresh();
+      if (next?.project.planStatus !== "approved") {
+        throw new Error("最终方案状态未能更新，请重试；若问题持续，请先重新生成方案。");
+      }
+      router.push("/export");
+    } catch (nextError) {
+      const nextMessage = (nextError as Error).message.trim();
+      setError(nextMessage);
+    } finally {
+      setBusy("");
+    }
   }
 
   async function startGeneration() {
@@ -152,6 +172,14 @@ export default function PlanPage() {
   function updateRegion(next: RegionReleasePlan) {
     if (!plan) return;
     setPlanDraft({ ...plan, regions: plan.regions.map((region) => region.regionId === next.regionId ? next : region) });
+  }
+
+  function updateSymbiosis(next: RegionalCharacterSymbiosisPlan) {
+    if (!plan) return;
+    setPlanDraft({
+      ...plan,
+      characterSymbiosisRelease: plan.characterSymbiosisRelease.map((item) => item.regionId === next.regionId ? next : item),
+    });
   }
 
   function scrollTo(element: HTMLElement | null) {
@@ -233,9 +261,18 @@ export default function PlanPage() {
               <article className={`${styles.document} ${documentFocus === "region" ? styles.sectionFocused : ""}`}>
                 <fieldset className={styles.editorFieldset} disabled={busy === "agent"}>
                   {activeRegion ? <RegionPlanEditor region={activeRegion} onChange={updateRegion} highlightKey={agentHighlight} /> : null}
-                  {activeRegion ? <CharacterSymbiosisView item={plan.characterSymbiosisRelease.find((entry) => entry.regionId === activeRegion.regionId)} /> : null}
+                  {activeRegion ? <CharacterSymbiosisView item={plan.characterSymbiosisRelease.find((entry) => entry.regionId === activeRegion.regionId)} onChange={updateSymbiosis} /> : null}
                 </fieldset>
-                <div className={styles.approvalBar}><div><Info size={18} /><span>最终审核只确认当前文档版本，不会触发任何发布、投放或外部联络。</span></div>{data.project.planStatus === "approved" ? <span className={styles.approvedText}><Check size={17} weight="bold" /> 方案已审核</span> : <button className="button button-cyan" onClick={() => void action("approve", () => request("/api/plan/approve", { method: "POST" }), "发行方案已完成最终审核")} disabled={Boolean(busy)}>确认最终方案</button>}</div>
+                <div className={styles.approvalBar}>
+                  <div className={styles.approvalCopy}><Info size={18} /><span>确认后锁定当前文档版本并进入策略导出，不会触发发布、投放或外部联络。</span></div>
+                  {data.project.planStatus === "approved" && !dirty ? (
+                    <span className={styles.approvedText}><Check size={17} weight="bold" /> 最终方案已确认</span>
+                  ) : (
+                    <div className={styles.approvalActions}>
+                      <button className="button button-cyan" onClick={() => void approvePlan()} disabled={Boolean(busy)}>{busy === "approve" ? "确认中…" : "确认最终方案"}</button>
+                    </div>
+                  )}
+                </div>
               </article>
 
               <SourceIntelligenceRail citations={data.citations} regions={data.regions} plan={plan} activeRegionId={activeRegion?.regionId || ""} history={agentHistory} />
@@ -329,21 +366,21 @@ function AutoTextarea({ value, onChange, className = "", ariaLabel }: { value: s
     element.style.height = "0px";
     element.style.height = `${element.scrollHeight}px`;
   }, [value]);
-  return <textarea readOnly ref={ref} rows={1} className={className} aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)} />;
+  return <textarea ref={ref} rows={1} className={className} aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)} />;
 }
 
 function ListEditor({ title, items, onChange, autoGrow = false, highlight = false }: { title: string; items: string[]; onChange: (items: string[]) => void; autoGrow?: boolean; highlight?: boolean }) {
   const value = items.join("\n");
-  return <div className={`${styles.listEditor} ${highlight ? styles.agentFieldFlash : ""}`}><h3>{title}</h3>{autoGrow ? <AutoTextarea ariaLabel={title} value={value} onChange={(next) => onChange(toLines(next))} /> : <textarea readOnly aria-label={title} value={value} onChange={(e) => onChange(toLines(e.target.value))} />}</div>;
+  return <div className={`${styles.listEditor} ${highlight ? styles.agentFieldFlash : ""}`}><h3>{title}</h3>{autoGrow ? <AutoTextarea ariaLabel={title} value={value} onChange={(next) => onChange(toLines(next))} /> : <textarea aria-label={title} value={value} onChange={(e) => onChange(toLines(e.target.value))} />}</div>;
 }
 
 function RegionPlanEditor({ region, onChange, highlightKey }: { region: RegionReleasePlan; onChange: (region: RegionReleasePlan) => void; highlightKey: string }) {
   const set = <K extends keyof RegionReleasePlan>(key: K, value: RegionReleasePlan[K]) => onChange({ ...region, [key]: value });
   return <section className={styles.regionSection}>
-    <div className={styles.regionHeading}><div><span className="mono">REGIONAL PLAN / {region.regionName.toUpperCase()}</span><h2>{region.regionName}</h2></div><span className="mono">READ ONLY · CHANGE VIA AGENT CHAT</span></div>
-    <div className={`${styles.coreJudgment} ${highlightKey === `region:${region.regionId}:coreJudgment` ? styles.agentFieldFlash : ""}`}><span className="mono">CORE JUDGMENT</span><textarea readOnly value={region.coreJudgment} onChange={(e) => set("coreJudgment", e.target.value)} /></div>
+    <div className={styles.regionHeading}><div><span className="mono">REGIONAL PLAN / {region.regionName.toUpperCase()}</span><h2>{region.regionName}</h2></div><span className="mono">DIRECT EDIT · AUTO SAVE</span></div>
+    <div className={`${styles.coreJudgment} ${highlightKey === `region:${region.regionId}:coreJudgment` ? styles.agentFieldFlash : ""}`}><span className="mono">CORE JUDGMENT</span><textarea value={region.coreJudgment} onChange={(e) => set("coreJudgment", e.target.value)} /></div>
     <div className={styles.strategyGrid}><ListEditor title="素材策略" items={region.materialStrategy} onChange={(items) => set("materialStrategy", items)} highlight={highlightKey === `region:${region.regionId}:materialStrategy`} /><ListEditor title="社媒节奏" items={region.socialCadence} onChange={(items) => set("socialCadence", items)} highlight={highlightKey === `region:${region.regionId}:socialCadence`} /><ListEditor title="KOL 合作" items={region.kolPlan} onChange={(items) => set("kolPlan", items)} highlight={highlightKey === `region:${region.regionId}:kolPlan`} /><ListEditor title="买量" items={region.paidMedia} onChange={(items) => set("paidMedia", items)} highlight={highlightKey === `region:${region.regionId}:paidMedia`} /><ListEditor title="联动计划" items={region.partnerships} onChange={(items) => set("partnerships", items)} highlight={highlightKey === `region:${region.regionId}:partnerships`} /><ListEditor title="风险提示" items={region.riskNotes} onChange={(items) => set("riskNotes", items)} highlight={highlightKey === `region:${region.regionId}:riskNotes`} /></div>
-    <div className={`${styles.timelineBlock} ${highlightKey === `region:${region.regionId}:timeline` ? styles.agentFieldFlash : ""}`}><h3>周级时间表</h3><textarea readOnly value={region.timeline.map((item) => `${item.week} | ${item.focus} | ${item.actions.join("；")}`).join("\n")} onChange={(e) => set("timeline", toLines(e.target.value).map((line) => { const [week = "", focus = "", actions = ""] = line.split("|").map((part) => part.trim()); return { week, focus, actions: actions.split(/[；;]/).map((item) => item.trim()).filter(Boolean) }; }))} /></div>
+    <div className={`${styles.timelineBlock} ${highlightKey === `region:${region.regionId}:timeline` ? styles.agentFieldFlash : ""}`}><h3>周级时间表</h3><textarea value={region.timeline.map((item) => `${item.week} | ${item.focus} | ${item.actions.join("；")}`).join("\n")} onChange={(e) => set("timeline", toLines(e.target.value).map((line) => { const [week = "", focus = "", actions = ""] = line.split("|").map((part) => part.trim()); return { week, focus, actions: actions.split(/[；;]/).map((item) => item.trim()).filter(Boolean) }; }))} /></div>
     <div className={styles.metricGrid}><ListEditor title="区域 KPI" items={region.kpis} onChange={(items) => set("kpis", items)} highlight={highlightKey === `region:${region.regionId}:kpis`} /><ListEditor title="预算配置" items={region.budget} onChange={(items) => set("budget", items)} highlight={highlightKey === `region:${region.regionId}:budget`} /></div>
     <div className={styles.characterSection}><div className={styles.characterHeader}><div><UserCircle size={21} weight="duotone" /><span><strong>AI 角色关系型发行</strong><small>仅生成长期触达方案与人工任务草案</small></span></div><span className={styles.noExecution}>NO EXECUTION CONNECTED</span></div>{region.characterRelease.length ? region.characterRelease.map((character, index) => <CharacterEditor key={`${character.character}-${index}`} regionId={region.regionId} index={index} character={character} highlightKey={highlightKey} onChange={(next) => set("characterRelease", region.characterRelease.map((item, itemIndex) => itemIndex === index ? next : item))} />) : <p className={styles.noCharacter}>当前区域没有可用角色方案。</p>}</div>
   </section>;
@@ -352,21 +389,31 @@ function RegionPlanEditor({ region, onChange, highlightKey }: { region: RegionRe
 function CharacterEditor({ character, onChange, regionId, index, highlightKey }: { character: CharacterReleasePlan; onChange: (next: CharacterReleasePlan) => void; regionId: string; index: number; highlightKey: string }) {
   const highlighted = (field: keyof CharacterReleasePlan) => highlightKey === `character:${regionId}:${index}:${field}`;
   return <div className={styles.characterCard}>
-    <div className={`${styles.characterIdentity} ${highlighted("character") || highlighted("relationshipStage") ? styles.agentFieldFlash : ""}`}><input readOnly aria-label="角色名称" size={Math.min(28, Math.max(4, Array.from(character.character).length + 1))} value={character.character} onChange={(e) => onChange({ ...character, character: e.target.value })} /><input readOnly aria-label="关系阶段" className={styles.relationshipInput} size={Math.min(24, Math.max(6, Array.from(character.relationshipStage).length + 1))} value={character.relationshipStage} onChange={(e) => onChange({ ...character, relationshipStage: e.target.value })} /></div>
-    <div className={styles.characterLead}><label className={highlighted("audienceSegment") ? styles.agentFieldFlash : ""}>玩家分群<input readOnly value={character.audienceSegment} onChange={(e) => onChange({ ...character, audienceSegment: e.target.value })} /></label><label className={highlighted("objective") ? styles.agentFieldFlash : ""}>发行目标<textarea readOnly value={character.objective} onChange={(e) => onChange({ ...character, objective: e.target.value })} /></label></div>
+    <div className={`${styles.characterIdentity} ${highlighted("character") || highlighted("relationshipStage") ? styles.agentFieldFlash : ""}`}><input aria-label="角色名称" size={Math.min(28, Math.max(4, Array.from(character.character).length + 1))} value={character.character} onChange={(e) => onChange({ ...character, character: e.target.value })} /><input aria-label="关系阶段" className={styles.relationshipInput} size={Math.min(24, Math.max(6, Array.from(character.relationshipStage).length + 1))} value={character.relationshipStage} onChange={(e) => onChange({ ...character, relationshipStage: e.target.value })} /></div>
+    <div className={styles.characterLead}><label className={highlighted("audienceSegment") ? styles.agentFieldFlash : ""}>玩家分群<input value={character.audienceSegment} onChange={(e) => onChange({ ...character, audienceSegment: e.target.value })} /></label><label className={highlighted("objective") ? styles.agentFieldFlash : ""}>发行目标<textarea value={character.objective} onChange={(e) => onChange({ ...character, objective: e.target.value })} /></label></div>
     <div className={styles.characterGrid}><ListEditor title="口吻规则" items={character.voiceRules} onChange={(items) => onChange({ ...character, voiceRules: items })} highlight={highlighted("voiceRules")} /><ListEditor title="长期内容弧" items={character.contentArc} onChange={(items) => onChange({ ...character, contentArc: items })} highlight={highlighted("contentArc")} /><ListEditor title="资产依赖" items={character.assetDependencies} onChange={(items) => onChange({ ...character, assetDependencies: items })} highlight={highlighted("assetDependencies")} /><ListEditor title="示例话题" items={character.sampleTopics} onChange={(items) => onChange({ ...character, sampleTopics: items })} highlight={highlighted("sampleTopics")} /><ListEditor title="禁区" items={character.guardrails} onChange={(items) => onChange({ ...character, guardrails: items })} highlight={highlighted("guardrails")} /></div>
-    <div className={`${styles.pipeEditor} ${highlighted("channels") ? styles.agentFieldFlash : ""}`}><label>渠道与频率 <span>每行：渠道 | 频率 | 角色作用</span></label><textarea readOnly value={character.channels.map((item) => `${item.channel} | ${item.frequency} | ${item.role}`).join("\n")} onChange={(e) => onChange({ ...character, channels: toLines(e.target.value).map((line) => { const [channel = "", frequency = "", role = ""] = line.split("|").map((part) => part.trim()); return { channel, frequency, role }; }) })} /></div>
-    <div className={`${styles.pipeEditor} ${highlighted("tasks") ? styles.agentFieldFlash : ""}`}><label>任务草案 <span>每行：时间 | 动作 | 资产 | 成功信号</span></label><textarea readOnly value={character.tasks.map((item) => `${item.time} | ${item.action} | ${item.asset} | ${item.successSignal}`).join("\n")} onChange={(e) => onChange({ ...character, tasks: toLines(e.target.value).map((line) => { const [time = "", action = "", asset = "", successSignal = ""] = line.split("|").map((part) => part.trim()); return { time, action, asset, successSignal }; }) })} /></div>
+    <div className={`${styles.pipeEditor} ${highlighted("channels") ? styles.agentFieldFlash : ""}`}><label>渠道与频率 <span>每行：渠道 | 频率 | 角色作用</span></label><textarea value={character.channels.map((item) => `${item.channel} | ${item.frequency} | ${item.role}`).join("\n")} onChange={(e) => onChange({ ...character, channels: toLines(e.target.value).map((line) => { const [channel = "", frequency = "", role = ""] = line.split("|").map((part) => part.trim()); return { channel, frequency, role }; }) })} /></div>
+    <div className={`${styles.pipeEditor} ${highlighted("tasks") ? styles.agentFieldFlash : ""}`}><label>任务草案 <span>每行：时间 | 动作 | 资产 | 成功信号</span></label><textarea value={character.tasks.map((item) => `${item.time} | ${item.action} | ${item.asset} | ${item.successSignal}`).join("\n")} onChange={(e) => onChange({ ...character, tasks: toLines(e.target.value).map((line) => { const [time = "", action = "", asset = "", successSignal = ""] = line.split("|").map((part) => part.trim()); return { time, action, asset, successSignal }; }) })} /></div>
   </div>;
 }
 
-function CharacterSymbiosisView({ item }: { item?: RegionalCharacterSymbiosisPlan }) {
-  if (!item) return <section className={styles.characterSection}><p className={styles.noCharacter}>当前区域缺少角色共生发行方案，最终审核将被阻断。</p></section>;
+function CharacterSymbiosisView({ item, onChange }: { item?: RegionalCharacterSymbiosisPlan; onChange: (next: RegionalCharacterSymbiosisPlan) => void }) {
+  if (!item) return <section className={styles.characterSection}><p className={styles.noCharacter}>当前区域缺少角色共生发行方案，请重新生成当前区域方案。</p></section>;
+  const set = <K extends keyof RegionalCharacterSymbiosisPlan>(key: K, value: RegionalCharacterSymbiosisPlan[K]) => onChange({ ...item, [key]: value });
+  const updateTask = (index: number, task: CharacterSymbiosisTask) => set("characterTasks", item.characterTasks.map((entry, taskIndex) => taskIndex === index ? task : entry));
   return <section className={styles.characterSection}>
-    <div className={styles.characterHeader}><div><UserCircle size={21} weight="duotone" /><span><strong>角色共生发行方案 · {item.regionName}</strong><small>该区域模块会单独传给后续共生发行 Agent</small></span></div><span className={styles.noExecution}>REGION-SCOPED HANDOFF</span></div>
-    <div className={styles.characterLead}><label>共生发行目标<textarea readOnly value={item.symbiosisObjective} /></label><label>目标玩家群体<textarea readOnly value={item.targetPlayerGroups.join("\n")} /></label></div>
-    <div className={styles.characterGrid}><ListEditor title="角色可传递版本信息" items={item.characterSuitableVersionMessages} onChange={() => undefined} /><ListEditor title="沟通切入点与互动场景" items={item.communicationEntryPointsAndScenes} onChange={() => undefined} /><ListEditor title="触达时机与频率" items={item.recommendedTimingAndFrequency} onChange={() => undefined} /><ListEditor title="语气与文化注意" items={item.toneExpressionAndCulturalNotes} onChange={() => undefined} /><ListEditor title="禁止行为与风险边界" items={item.prohibitedBehaviorsAndRiskBoundaries} onChange={() => undefined} /><ListEditor title="预期效果与指标" items={item.expectedEffectsAndMetrics} onChange={() => undefined} /></div>
-    {item.characterTasks.map((task, index) => <div className={styles.characterCard} key={`${task.character}-${index}`}><div className={styles.characterIdentity}><strong>{task.character}</strong><span>{task.playerSegment}</span></div><p>{task.objective}</p><div className={styles.characterGrid}><ListEditor title="版本信息与切口" items={[task.versionMessage, task.communicationAngle]} onChange={() => undefined} /><ListEditor title="场景与节奏" items={[task.interactionScene, `${task.timing}｜${task.frequency}`]} onChange={() => undefined} /><ListEditor title="文化与语气" items={[task.tone, ...task.culturalNotes]} onChange={() => undefined} /><ListEditor title="风险边界" items={[...task.prohibitedBehaviors, ...task.riskBoundaries]} onChange={() => undefined} /></div></div>)}
+    <div className={styles.characterHeader}><div><UserCircle size={21} weight="duotone" /><span><strong>三月七共生发行方案 · {item.regionName}</strong><small>三月七以同行者视角介绍黑天鹅，引导玩家对匹诺康尼产生兴趣</small></span></div><span className={styles.noExecution}>MARCH 7TH · REGION-SCOPED</span></div>
+    <div className={styles.characterLead}><label>共生发行目标<textarea value={item.symbiosisObjective} onChange={(event) => set("symbiosisObjective", event.target.value)} /></label><label>目标玩家群体<textarea value={item.targetPlayerGroups.join("\n")} onChange={(event) => set("targetPlayerGroups", toLines(event.target.value))} /></label></div>
+    <div className={styles.characterGrid}><ListEditor title="角色可传递版本信息" items={item.characterSuitableVersionMessages} onChange={(value) => set("characterSuitableVersionMessages", value)} /><ListEditor title="沟通切入点与互动场景" items={item.communicationEntryPointsAndScenes} onChange={(value) => set("communicationEntryPointsAndScenes", value)} /><ListEditor title="触达时机与频率" items={item.recommendedTimingAndFrequency} onChange={(value) => set("recommendedTimingAndFrequency", value)} /><ListEditor title="语气与文化注意" items={item.toneExpressionAndCulturalNotes} onChange={(value) => set("toneExpressionAndCulturalNotes", value)} /><ListEditor title="禁止行为与风险边界" items={item.prohibitedBehaviorsAndRiskBoundaries} onChange={(value) => set("prohibitedBehaviorsAndRiskBoundaries", value)} /><ListEditor title="预期效果与指标" items={item.expectedEffectsAndMetrics} onChange={(value) => set("expectedEffectsAndMetrics", value)} /><ListEditor title="区域策略关联" items={item.regionalStrategyLinks} onChange={(value) => set("regionalStrategyLinks", value)} /></div>
+    {item.characterTasks.map((task, index) => <div className={styles.characterCard} key={`${item.regionId}-symbiosis-${index}`}>
+      <div className={styles.characterIdentity}><input aria-label={`共生角色 ${index + 1}`} value={task.character} onChange={(event) => updateTask(index, { ...task, character: event.target.value })} /><input aria-label={`共生玩家分群 ${index + 1}`} className={styles.relationshipInput} value={task.playerSegment} onChange={(event) => updateTask(index, { ...task, playerSegment: event.target.value })} /></div>
+      <div className={styles.characterLead}><label>任务目标<textarea value={task.objective} onChange={(event) => updateTask(index, { ...task, objective: event.target.value })} /></label><label>版本信息<textarea value={task.versionMessage} onChange={(event) => updateTask(index, { ...task, versionMessage: event.target.value })} /></label></div>
+      <div className={styles.characterLead}><label>沟通切入点<textarea value={task.communicationAngle} onChange={(event) => updateTask(index, { ...task, communicationAngle: event.target.value })} /></label><label>互动场景<textarea value={task.interactionScene} onChange={(event) => updateTask(index, { ...task, interactionScene: event.target.value })} /></label></div>
+      <div className={styles.characterLead}><label>触达时机<input value={task.timing} onChange={(event) => updateTask(index, { ...task, timing: event.target.value })} /></label><label>触达频率<input value={task.frequency} onChange={(event) => updateTask(index, { ...task, frequency: event.target.value })} /></label></div>
+      <div className={styles.characterLead}><label>表达语气<textarea value={task.tone} onChange={(event) => updateTask(index, { ...task, tone: event.target.value })} /></label><label>预期效果<textarea value={task.expectedEffect} onChange={(event) => updateTask(index, { ...task, expectedEffect: event.target.value })} /></label></div>
+      <div className={styles.characterGrid}><ListEditor title="文化注意" items={task.culturalNotes} onChange={(value) => updateTask(index, { ...task, culturalNotes: value })} /><ListEditor title="禁止行为" items={task.prohibitedBehaviors} onChange={(value) => updateTask(index, { ...task, prohibitedBehaviors: value })} /><ListEditor title="风险边界" items={task.riskBoundaries} onChange={(value) => updateTask(index, { ...task, riskBoundaries: value })} /></div>
+      <div className={styles.pipeEditor}><label>评估指标 <span>每行：指标 | 目标 | 测量窗口</span></label><textarea value={task.metrics.map((metric) => `${metric.name} | ${metric.target} | ${metric.measurementWindow}`).join("\n")} onChange={(event) => updateTask(index, { ...task, metrics: toLines(event.target.value).map((line) => { const [name = "", target = "", measurementWindow = ""] = line.split("|").map((part) => part.trim()); return { name, target, measurementWindow }; }) })} /></div>
+    </div>)}
   </section>;
 }
 

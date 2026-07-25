@@ -34,7 +34,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const response = await fetch(url, { ...init, cache: "no-store" });
     const contentType = response.headers.get("content-type") || "";
     const payload = contentType.includes("application/json") ? await response.json() : await response.text();
-    if (!response.ok) throw new Error(typeof payload === "string" ? payload : payload.error || "请求失败");
+    if (!response.ok) {
+      if (typeof payload === "string") throw new Error(payload);
+      const details = Array.isArray(payload.violations)
+        ? payload.violations.slice(0, 4).map((item: { message?: string }) => item.message).filter(Boolean)
+        : [];
+      throw new Error([payload.error || "请求失败", ...details].join("；"));
+    }
     return payload as T;
   }, []);
 

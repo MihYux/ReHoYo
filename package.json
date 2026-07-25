@@ -28,6 +28,7 @@
     "cache:seed:hsr2": "node scripts/seed-hsr2-evidence-cache.mjs",
     "cache:verify:hsr2": "node scripts/verify-hsr2-evidence-cache.mjs",
     "test:plan-agent:live": "vitest run --config vitest.live.config.ts",
+    "capture:readme-chats": "electron desktop-march7th/scripts/capture-readme-chats.cjs",
     "test:ui:headless": "python scripts/headless-ui-smoke.py",
     "test:regions:headless": "python scripts/headless-regions-smoke.py",
     "test:regions:live-ui": "python scripts/headless-regions-live.py",

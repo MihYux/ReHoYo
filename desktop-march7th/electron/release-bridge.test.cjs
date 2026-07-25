@@ -46,3 +46,18 @@ test("quarantines corrupted deliveries", async (context) => {
   consumer.close();
 });
 
+test("quarantines checksum-valid deliveries containing internal metadata", async (context) => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "march-bridge-meta-"));
+  context.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
+  const inbox = path.join(rootDir, "inbox");
+  fs.mkdirSync(inbox, { recursive: true });
+  const payload = fixture("delivery_metadata");
+  payload.plan.theme = "生成时间：2026-07-25T05:50:02.907Z";
+  const { checksum: _old, ...delivery } = payload;
+  const contaminated = { ...delivery, checksum: deliveryChecksum(delivery) };
+  fs.writeFileSync(path.join(inbox, "delivery_metadata.json"), JSON.stringify(contaminated));
+  const consumer = new ReleaseBridgeConsumer({ rootDir, onDelivery: async () => assert.fail("must not deliver") });
+  await consumer.scan();
+  assert.equal(fs.readdirSync(path.join(rootDir, "quarantine")).filter((name) => name.endsWith(".json")).length, 1);
+  consumer.close();
+});

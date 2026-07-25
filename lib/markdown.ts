@@ -33,6 +33,53 @@ export function characterSymbiosisToMarkdown(
   plan: ReleasePlan,
   item: RegionalCharacterSymbiosisPlan,
 ) {
+  const tasks = item.characterTasks.map((task, index) => `### ${index + 1}. ${task.character} · ${task.playerSegment}\n\n- **任务目标**：${task.objective}\n- **版本信息**：${task.versionMessage}\n- **沟通切入点**：${task.communicationAngle}\n- **互动场景**：${task.interactionScene}\n- **时机与频率**：${task.timing}｜${task.frequency}\n- **语气**：${task.tone}\n- **文化注意**：${task.culturalNotes.join("；")}\n- **禁止行为**：${task.prohibitedBehaviors.join("；")}\n- **风险边界**：${task.riskBoundaries.join("；")}\n- **预期效果**：${task.expectedEffect}\n- **评估指标**：${task.metrics.map((metric) => `${metric.name}=${metric.target}（${metric.measurementWindow}）`).join("；")}`).join("\n\n");
+  return `# ${project.gameName || "未命名游戏"} · ${project.versionName || "新版本"} · 角色共生发行方案
+
+生成时间：${plan.generatedAt}
+
+## ${item.regionName}区域
+
+### 共生发行目标
+
+${item.symbiosisObjective}
+
+### 目标玩家群体
+${list(item.targetPlayerGroups)}
+
+### 可传递的版本信息
+${list(item.characterSuitableVersionMessages)}
+
+### 沟通切入点与互动场景
+${list(item.communicationEntryPointsAndScenes)}
+
+### 推荐触达时机与频率
+${list(item.recommendedTimingAndFrequency)}
+
+### 语气、表达和文化注意事项
+${list(item.toneExpressionAndCulturalNotes)}
+
+### 禁止行为与风险边界
+${list(item.prohibitedBehaviorsAndRiskBoundaries)}
+
+### 预期效果与评估指标
+${list(item.expectedEffectsAndMetrics)}
+
+## 区域角色任务
+
+${tasks}
+
+## 区域策略关联
+
+${list(item.regionalStrategyLinks)}
+`;
+}
+
+export function legacyCharacterSymbiosisToMarkdown(
+  project: ProjectSnapshot,
+  plan: ReleasePlan,
+  item: RegionalCharacterSymbiosisPlan,
+) {
   const objective = `通过三月七与${item.regionName}玩家之间已有的长期陪伴关系，自然传递《崩坏：星穹铁道》${project.versionName}版本“匹诺康尼”相关信息，重点提升老玩家回流意愿与版本关注度。`;
   const targets = [
     "近30天未登录的老玩家",

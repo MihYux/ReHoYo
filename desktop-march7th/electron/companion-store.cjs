@@ -3,6 +3,8 @@ const path = require("node:path");
 const { createHash, randomUUID } = require("node:crypto");
 const { evaluateContactPolicy } = require("./contact-policy.cjs");
 const { reviewCharacterOutput } = require("./content-safety.cjs");
+const { validateReleasePlanFields } = require("./release-content-safety.cjs");
+const { localReleaseMessageReview } = require("./release-message-preflight.cjs");
 const { containsSensitiveMemory, extractMemoryCandidate } = require("./memory-candidates.cjs");
 const {
   PHASE_TO_MESSAGE_TYPE,
@@ -22,14 +24,14 @@ const {
   getDemoScenarioSummaries,
 } = require("./demo-scenarios.cjs");
 
-const COMPANION_SCHEMA_VERSION = 3;
-const PREVIOUS_SCHEMA_VERSIONS = new Set([1, 2, 3]);
+const COMPANION_SCHEMA_VERSION = 4;
+const PREVIOUS_SCHEMA_VERSIONS = new Set([1, 2, 3, 4]);
 const EPISODE_RETENTION_MS = 90 * 24 * 60 * 60 * 1_000;
 const MAX_CONVERSATION_EPISODES = 1_000;
 const MAX_COLLECTION_ITEMS = 2_000;
 const PLAYER_VISIBLE_TITLE_FALLBACK = "三月七想和你聊聊";
 const PLAYER_VISIBLE_MESSAGE_FALLBACK =
-  "开拓者，最近列车上多了件挺有意思的新鲜事。你有空、也正好想换换心情的时候，可以来看看；最近忙的话就先放着。";
+  "开拓者，刚才那句话听着有点生硬，咱换个轻松的话题吧。今天过得怎么样？";
 
 function sanitizePlayerVisibleText(value, fallback) {
   const reviewed = reviewCharacterOutput(String(value ?? ""));
@@ -147,6 +149,89 @@ function asRecordArray(value, requiredFields) {
     )
     .slice(0, MAX_COLLECTION_ITEMS)
     .map(clone);
+}
+
+function normalizeRegionalReleaseInput(input) {
+  if (!isObject(input)) throw new Error("Regional release plan is required.");
+  const text = (value, maxLength) =>
+    typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+  const sourceId = text(input.sourceId, 160);
+  const taskId = text(input.taskId ?? input.plan?.id, 120);
+  const regionId = text(input.regionId ?? input.region?.id, 80);
+  const rolloutPercent = Number(input.rolloutPercent);
+  if (!sourceId || !taskId || !regionId) throw new Error("Regional release source, task and region identifiers are required.");
+  if (!Number.isFinite(rolloutPercent) || rolloutPercent < 1 || rolloutPercent > 100) {
+    throw new Error("Rollout percentage must be between 1 and 100.");
+  }
+  const plan = {
+    id: taskId,
+    title: text(input.plan?.title, 120) || "新的版本旅程",
+    theme: text(input.plan?.theme, 240),
+    narrative: text(input.plan?.narrative, 1200),
+    timeWindow: text(input.plan?.timeWindow, 120),
+    facts: Array.isArray(input.plan?.facts)
+      ? input.plan.facts.slice(0, 20).map((fact, index) => ({
+          id: text(fact?.id, 120) || `fact-${index + 1}`,
+          label: text(fact?.label, 120),
+          value: text(fact?.value, 500),
+          source: text(fact?.source, 240),
+        }))
+      : [],
+    sourceName: text(input.source?.name, 160),
+    sourceExcerpt: text(input.source?.content, 6000),
+  };
+  const contentValidation = validateReleasePlanFields(plan);
+  if (!contentValidation.valid) {
+    throw new Error(`Regional release contains internal metadata: ${contentValidation.errors.map((item) => `${item.field}:${item.reason}`).join(",")}`);
+  }
+  return { sourceId, taskId, regionId, rolloutPercent, exampleMode: input.exampleMode === true, plan };
+}
+
+function authorizedReleaseMemory(data) {
+  if (data.profile.memoryEnabled !== true || data.relationship.memoryEnabled !== true) return null;
+  return [...data.memories].reverse().find((item) =>
+    item.status === "confirmed" && item.userConfirmed === true &&
+    item.reusableByCharacter === true && item.campaignReusable === true) || null;
+}
+
+function buildRegionalReleaseCandidate(data, plan) {
+  const materials = [
+    ...(Array.isArray(plan.facts) ? plan.facts.map((fact) => fact.value) : []),
+    plan.theme,
+  ].filter((value) => typeof value === "string" && value.trim());
+  const findTopic = (patterns) => {
+    for (const material of materials) {
+      for (const pattern of patterns) {
+        const match = material.match(pattern);
+        const value = match?.[1]?.trim().replace(/[“”"']/g, "");
+        if (value && value.length <= 24) return value;
+      }
+    }
+    return "";
+  };
+  const subject = findTopic([
+    /(?:介绍|认识|聊聊|了解)(?:一下|关于)?[“"]?([^，。；：:“”"]{1,24})/,
+    /(?:关于|有关)[“"]?([^，。；：:“”"]{1,24})/,
+  ]);
+  const destination = findTopic([
+    /一起(?:去|看看|认识|了解|探索)[“"]?([^，。；：:“”"]{1,24})/,
+    /去[“"]?([^，。；：:“”"]{1,24})看看/,
+    /对[“"]?([^，。；：:“”"]{1,24})的兴趣/,
+  ]);
+  const fallbackFact = (Array.isArray(plan.facts) ? plan.facts : [])
+    .map((fact) => String(fact?.value || "").trim())
+    .find((value) => value && value.length <= 40 && !/(?:激发玩家|提升玩家|引导玩家|发行目标|任务目标)/.test(value)) || "";
+  const primary = subject || destination || fallbackFact;
+  const secondThought = destination && destination !== primary
+    ? `，也想和你一起去${destination}看看`
+    : "";
+  const body = primary
+    ? `开拓者，我最近正想和你聊聊${primary}${secondThought}。你有空的时候，咱们再慢慢说？最近忙也没关系。`
+    : "";
+  return {
+    memory: null,
+    body,
+  };
 }
 
 function validateEntityId(value, label = "Entity") {
@@ -840,17 +925,7 @@ function normalizeCompanionData(input, { skillProfile, now }) {
       "createdAt",
       "eventId",
       "reviewStatus",
-    ]).map((message) => ({
-      ...message,
-      title: sanitizePlayerVisibleText(
-        message.title,
-        PLAYER_VISIBLE_TITLE_FALLBACK,
-      ),
-      body: sanitizePlayerVisibleText(
-        message.body,
-        PLAYER_VISIBLE_MESSAGE_FALLBACK,
-      ),
-    })),
+    ]),
     campaigns: asRecordArray(input.campaigns, [
       "id",
       "characterId",
@@ -3184,41 +3259,33 @@ class CompanionStore {
     });
   }
 
-  receiveRegionalReleasePlan(input) {
-    if (!isObject(input)) throw new Error("区域发行方案不能为空。");
-    const text = (value, maxLength) =>
-      typeof value === "string" ? value.trim().slice(0, maxLength) : "";
-    const sourceId = text(input.sourceId, 160);
-    const taskId = text(input.taskId ?? input.plan?.id, 120);
-    const regionId = text(input.regionId ?? input.region?.id, 80);
-    const rolloutPercent = Number(input.rolloutPercent);
-    const exampleMode = input.exampleMode === true;
-    if (!sourceId || !taskId || !regionId) {
-      throw new Error("区域发行方案缺少来源、任务或区域标识。");
-    }
-    if (
-      !Number.isFinite(rolloutPercent) ||
-      rolloutPercent < 1 ||
-      rolloutPercent > 100
-    ) {
-      throw new Error("灰度比例必须在 1% 到 100% 之间。");
-    }
-    const plan = {
-      id: taskId,
-      title: text(input.plan?.title, 120) || "新的版本旅程",
-      theme: text(input.plan?.theme, 240),
-      narrative: text(input.plan?.narrative, 1200),
-      timeWindow: text(input.plan?.timeWindow, 120),
-      facts: Array.isArray(input.plan?.facts)
-        ? input.plan.facts.slice(0, 20).map((fact, index) => ({
-            id: text(fact?.id, 120) || `fact-${index + 1}`,
-            label: text(fact?.label, 120),
-            value: text(fact?.value, 500),
-            source: text(fact?.source, 240),
-          }))
-        : [],
-      sourceName: text(input.source?.name, 160),
-      sourceExcerpt: text(input.source?.content, 6000),
+  prepareRegionalReleaseMessage(input) {
+    const normalized = normalizeRegionalReleaseInput(input);
+    const candidate = buildRegionalReleaseCandidate(this.data, normalized.plan);
+    return clone({
+      text: candidate.body,
+      plan: normalized.plan,
+      context: {
+        region: input.region || {},
+        memoryUsed: Boolean(candidate.memory),
+        contactAllowed: true,
+      },
+    });
+  }
+
+  receiveRegionalReleasePlan(input, providedPreflight) {
+    const { sourceId, taskId, regionId, rolloutPercent, exampleMode, plan } = normalizeRegionalReleaseInput(input);
+    const candidate = buildRegionalReleaseCandidate(this.data, plan);
+    const local = localReleaseMessageReview({ text: candidate.body, plan, contactAllowed: true });
+    const preflight = providedPreflight || {
+      decision: local.passed ? "execute" : "skip",
+      dimensions: local.dimensions,
+      reasonCodes: local.reasonCodes,
+      rewriteCount: 0,
+      reviewMode: "local_fallback",
+      finalText: local.passed ? candidate.body : "",
+      model: "local-rules",
+      degraded: true,
     };
 
     return this.#commit((data, now) => {
@@ -3311,30 +3378,46 @@ class CompanionStore {
         return;
       }
 
-      const memory = (
-        data.profile.memoryEnabled === true &&
-        data.relationship.memoryEnabled === true
-      )
-        ? [...data.memories].reverse().find(
-            (item) =>
-              item.status === "confirmed" &&
-              item.userConfirmed === true &&
-              item.reusableByCharacter === true &&
-              item.campaignReusable === true,
-          )
-        : null;
-      const topic = sanitizePlayerVisibleText(
-        plan.theme || plan.title,
-        "列车上的新故事",
-      );
-      const memoryLead = memory
-        ? `还记得“${sanitizePlayerVisibleText(memory.title, "以前聊过的那件事")}”吗？`
-        : "";
-      const body = sanitizePlayerVisibleText(
-        `${memoryLead}最近列车上多了件和“${topic}”有关的新鲜事。` +
-          "你有空、也正好想换换心情的时候，可以来看看；最近忙的话就先放着。",
-        PLAYER_VISIBLE_MESSAGE_FALLBACK,
-      );
+      const memory = null;
+      if (preflight.decision !== "execute" || !preflight.finalText) {
+        event.status = "suppressed";
+        event.suppressionReason = "release_preflight_failed";
+        this.#appendLog(data, {
+          occurredAt: now,
+          category: "delivery",
+          action: "regional_plan_preflight_suppressed",
+          summary: "区域发行消息未通过发送前自检，未进入玩家时间线。",
+          actor: "system",
+          entityType: "event",
+          entityId: eventId,
+          metadata: {
+            sourceId, taskId, regionId,
+            reviewMode: preflight.reviewMode,
+            reasonCodes: preflight.reasonCodes,
+            rewriteCount: preflight.rewriteCount,
+            model: preflight.model || "",
+            degraded: preflight.degraded === true,
+          },
+        });
+        return;
+      }
+      const finalContactDecision = evaluateContactPolicy({ data, event, now: data.demoNow });
+      if (!finalContactDecision.allowed) {
+        event.status = "suppressed";
+        event.suppressionReason = finalContactDecision.reason ?? "unknown";
+        this.#appendLog(data, {
+          occurredAt: now,
+          category: "delivery",
+          action: "regional_plan_post_preflight_suppressed",
+          summary: "发送前状态复核阻止了区域发行消息。",
+          actor: "system",
+          entityType: "event",
+          entityId: eventId,
+          metadata: { sourceId, taskId, regionId, reason: finalContactDecision.reason ?? "unknown" },
+        });
+        return;
+      }
+      const body = sanitizePlayerVisibleText(preflight.finalText, PLAYER_VISIBLE_MESSAGE_FALLBACK);
       const messageId = `message-${randomUUID()}`;
       data.messages.unshift({
         id: messageId,
@@ -3368,7 +3451,16 @@ class CompanionStore {
           fixedFactIds: plan.facts.map((fact) => fact.id),
           knowledgeChunkIds: [],
           memoryIds: memory ? [memory.id] : [],
-          generatedAt: data.demoNow,
+           generatedAt: data.demoNow,
+          preflight: {
+            decision: preflight.decision,
+            dimensions: preflight.dimensions,
+            reasonCodes: preflight.reasonCodes,
+            rewriteCount: preflight.rewriteCount,
+            reviewMode: preflight.reviewMode,
+            model: preflight.model || "",
+            degraded: preflight.degraded === true,
+          },
         },
         releasePlan: plan,
         releaseSourceId: sourceId,

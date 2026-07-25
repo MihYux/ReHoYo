@@ -60,10 +60,11 @@ test("selected companion receives the plan and starts a soft memory-aware chat",
   assert.equal(message.type, "version_launch");
   assert.equal(message.deliveryMode, "proactive");
   assert.ok(message.sentAt);
-  assert.ok(message.body.includes("最近列车上多了件"));
+  assert.ok(message.body.length > 0);
+  assert.doesNotMatch(message.body, /最近列车上多了件和[“"]?.{20,}[”"]?有关的新鲜事/);
   assert.doesNotMatch(message.body, /发行方案|发行目标|共生发行目标|咱刚看到一段/);
   assert.ok(message.trace.ruleIds.includes("release.regional_plan_received"));
-  assert.equal(message.trace.memoryIds.length, 1);
+  assert.equal(message.trace.memoryIds.length, 0);
   assert.equal(snapshot.events.at(-1).status, "executed");
 
   const context = store.getActiveReleasePlanContext();
@@ -77,6 +78,25 @@ test("selected companion receives the plan and starts a soft memory-aware chat",
     ).length,
     1,
   );
+});
+
+test("turns operator objectives into concrete natural March 7th dialogue", (t) => {
+  const { directory, store } = setup();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const input = planInput("release-plan-natural-language");
+  input.plan.theme = "由三月七以同行者视角介绍黑天鹅，激发玩家对匹诺康尼的兴趣。";
+  input.plan.facts = [{
+    id: "fact-penacony",
+    label: "版本信息",
+    value: "我想带你认识黑天鹅，也一起看看匹诺康尼：匹诺康尼是全新世界大版本。",
+    source: "已审核角色共生方案",
+  }];
+  const prepared = store.prepareRegionalReleaseMessage(input);
+  assert.equal(
+    prepared.text,
+    "开拓者，我最近正想和你聊聊黑天鹅，也想和你一起去匹诺康尼看看。你有空的时候，咱们再慢慢说？最近忙也没关系。",
+  );
+  assert.doesNotMatch(prepared.text, /由三月七|激发玩家|同行者视角/);
 });
 
 test("contact policy can defer proactive chat while retaining passive context", (t) => {

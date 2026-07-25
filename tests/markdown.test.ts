@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { markdownWordCount, planToMarkdown, regionPlanToMarkdown } from "@/lib/markdown";
+import { characterSymbiosisToMarkdown, markdownWordCount, planToMarkdown, regionPlanToMarkdown } from "@/lib/markdown";
 import type { ProjectSnapshot, ReleasePlan } from "@/lib/contracts";
 
 const project: ProjectSnapshot = {
@@ -30,5 +30,21 @@ describe("markdown export", () => {
     expect(output).toContain("日本发行策略");
     expect(output).toContain("本区域来源");
     expect(markdownWordCount(output)).toBeGreaterThan(75);
+  });
+
+  it("exports the edited regional character symbiosis content", () => {
+    const item = {
+      regionId: "region-jp", regionName: "日本", symbiosisObjective: "让玩家通过三月七认识黑天鹅并对匹诺康尼产生兴趣",
+      targetPlayerGroups: ["剧情向回流玩家"], characterSuitableVersionMessages: ["黑天鹅将在匹诺康尼登场"],
+      communicationEntryPointsAndScenes: ["三月七从列车同行见闻自然说起"], recommendedTimingAndFrequency: ["T-2 每周一次"],
+      toneExpressionAndCulturalNotes: ["使用三月七第一人称"], prohibitedBehaviorsAndRiskBoundaries: ["不催促登录"],
+      expectedEffectsAndMetrics: ["提升匹诺康尼兴趣"], regionalStrategyLinks: ["承接日本区域剧情内容策略"], sourceIds: ["JP-S001"],
+      characterTasks: [{ character: "三月七", objective: "介绍黑天鹅", playerSegment: "剧情向玩家", versionMessage: "匹诺康尼的新同行者", communicationAngle: "我在列车上听说了一位忆者", interactionScene: "桌宠日常对话", timing: "T-2", frequency: "每周一次", tone: "好奇而亲切", culturalNotes: ["避免剧透"], prohibitedBehaviors: ["不使用促销话术"], riskBoundaries: ["拒绝后停止"], expectedEffect: "产生世界观兴趣", metrics: [{ name: "兴趣表达率", target: "20%", measurementWindow: "7天" }] }],
+    };
+    const output = characterSymbiosisToMarkdown(project, { ...plan, characterSymbiosisRelease: [item] }, item);
+    expect(output).toContain(item.symbiosisObjective);
+    expect(output).toContain(item.characterTasks[0].communicationAngle);
+    expect(output).toContain("兴趣表达率=20%（7天）");
+    expect(output).not.toContain("近30天未登录的老玩家");
   });
 });

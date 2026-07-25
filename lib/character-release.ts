@@ -11,6 +11,7 @@ import type {
   CharacterReleaseTask,
   CharacterReleaseTaskInput,
 } from "@/lib/character-release-types";
+import { releaseMetadataReason, validatePlayerVisibleReleaseFields } from "@/lib/release-content-safety";
 
 const DATA_DIR = path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.DATA_DIR || ".data");
 const WORKSPACE_PATH = path.join(DATA_DIR, "character-release-workspace.json");
@@ -34,6 +35,7 @@ async function readSnapshot() {
   try {
     const parsed = JSON.parse(await fs.readFile(WORKSPACE_PATH, "utf8")) as CharacterReleaseSnapshot;
     if (parsed.schemaVersion !== 1) throw new Error("不支持的角色发行工作区版本。");
+    repairSnapshotMetadata(parsed);
     return parsed;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptySnapshot();
@@ -120,22 +122,104 @@ function textValue(text: string, labels: string[]) {
   return "";
 }
 
+type MarkdownSections = Map<string, string[]>;
+
+function normalizedHeading(value: string) {
+  return value.replace(/^\d+[.、]\s*/, "").replace(/[*_`]/g, "").trim();
+}
+
+function markdownSections(content: string): MarkdownSections {
+  const sections = new Map<string, string[]>();
+  let current = "";
+  for (const rawLine of content.split(/\r?\n/)) {
+    const heading = rawLine.match(/^\s*#{2,6}\s+(.+?)\s*$/);
+    if (heading) {
+      current = normalizedHeading(heading[1]);
+      if (!sections.has(current)) sections.set(current, []);
+      continue;
+    }
+    if (!current) continue;
+    const clean = rawLine
+      .replace(/^\s*[-*+]\s+/, "")
+      .replace(/^\s*-\s*\*\*(.+?)\*\*\s*[：:]\s*/, "$1：")
+      .trim();
+    if (clean) sections.get(current)?.push(clean);
+  }
+  return sections;
+}
+
+function sectionLines(sections: MarkdownSections, names: string[]) {
+  for (const [heading, lines] of sections) {
+    if (names.some((name) => heading.includes(name))) return lines;
+  }
+  return [];
+}
+
+function safeLines(lines: string[], field: "theme" | "narrative" | "timeWindow" | "fact") {
+  return lines.filter((line) => !releaseMetadataReason(line, field));
+}
+
+export function parseCharacterReleaseMarkdown(content: string, fileName: string) {
+  const sections = markdownSections(content);
+  const objective = safeLines(sectionLines(sections, ["共生发行目标", "任务目标"]), "theme");
+  const versionFacts = safeLines(sectionLines(sections, ["可传递的版本信息", "适合由角色传递的版本信息", "版本信息"]), "fact");
+  const communication = safeLines(sectionLines(sections, ["沟通切入点与互动场景", "角色沟通切入点", "沟通切入点"]), "narrative");
+  const tone = safeLines(sectionLines(sections, ["语气、表达和文化注意事项", "语气"]), "narrative");
+  const timing = safeLines(sectionLines(sections, ["推荐触达时机与频率", "时机与频率"]), "timeWindow");
+  const firstHeading = content.match(/^#\s+(.+?)\s*$/m)?.[1]?.replace(/\s*[·|-]\s*角色共生发行方案\s*$/, "").trim();
+  const title = !releaseMetadataReason(firstHeading, "title")
+    ? firstHeading
+    : path.basename(fileName, path.extname(fileName)).replace(/[-_]/g, " ");
+  return {
+    title: title || "角色共生发行方案",
+    theme: objective[0] || "",
+    narrative: [...communication, ...tone].join("；"),
+    timeWindow: timing.join("；"),
+    facts: versionFacts,
+  };
+}
+
+export function repairSnapshotMetadata(data: CharacterReleaseSnapshot) {
+  for (const workspace of Object.values(data.workspaces || {})) {
+    for (const task of workspace.tasks || []) {
+      if (!task.sourceDocument?.content) continue;
+      const parsed = parseCharacterReleaseMarkdown(task.sourceDocument.content, task.sourceDocument.name);
+      const repaired: string[] = [];
+      if (releaseMetadataReason(task.title, "title") && parsed.title) { task.title = parsed.title; repaired.push("title"); }
+      if (releaseMetadataReason(task.theme, "theme") && parsed.theme) { task.theme = parsed.theme; repaired.push("theme"); }
+      if (releaseMetadataReason(task.narrative, "narrative") && parsed.narrative) { task.narrative = parsed.narrative; repaired.push("narrative"); }
+      if (releaseMetadataReason(task.timeWindow, "timeWindow") && parsed.timeWindow) { task.timeWindow = parsed.timeWindow; repaired.push("timeWindow"); }
+      const cleanFacts = (task.facts || []).filter((fact) =>
+        !releaseMetadataReason(fact.label, "fact") &&
+        !releaseMetadataReason(fact.value, "fact") &&
+        !releaseMetadataReason(fact.source, "fact"));
+      if (cleanFacts.length !== (task.facts || []).length) {
+        const existingValues = new Set(cleanFacts.map((fact) => fact.value));
+        for (const value of parsed.facts) {
+          if (!existingValues.has(value)) cleanFacts.push({ id: id("fact"), label: "版本信息", value, source: "已审核角色共生方案" });
+        }
+        task.facts = cleanFacts;
+        repaired.push("facts");
+      }
+      if (repaired.length) {
+        task.status = taskStatus(task);
+        task.updatedAt = now();
+        audit(data, task.regionId, "task.metadata_repaired", task.id, `Repaired fields: ${repaired.join(", ")}`);
+      }
+    }
+  }
+}
+
 export function createImportedCharacterReleaseTask(regionId: string, fileName: string, content: string, metadata: { researchRunId?: string; planGeneratedAt?: string } = {}) {
   const importedAt = now();
-  const title = textValue(content, ["版本任务名称", "方案名称", "版本名称"])
-    || `${path.basename(fileName, path.extname(fileName)).replace(/[-_]/g, " ")} · ${importedAt.slice(0, 10)}`;
-  const theme = textValue(content, ["共生发行目标", "全局主题", "核心主题", "发行主题"])
-    || content.split(/\r?\n/).find((line) => line.trim() && !line.trim().startsWith("#"))?.trim().slice(0, 500)
-    || "角色共生发行";
-  const facts = [
-    { label: "方案文件", value: fileName, source: fileName },
-    { label: "内容校验值", value: checksum(content), source: fileName },
-    ...(metadata.planGeneratedAt ? [{ label: "方案生成时间", value: metadata.planGeneratedAt, source: fileName }] : []),
-  ].map((fact) => ({ id: id("fact"), ...fact }));
+  const parsed = parseCharacterReleaseMarkdown(content, fileName);
+  const title = textValue(content, ["版本任务名称", "方案名称", "版本名称"]) || `${parsed.title} · ${importedAt.slice(0, 10)}`;
+  const theme = parsed.theme || textValue(content, ["共生发行目标", "全局主题", "核心主题", "发行主题"]) || "角色共生发行";
+  const facts = parsed.facts.map((value) => ({ id: id("fact"), label: "版本信息", value, source: "已审核角色共生方案" }));
   const task: CharacterReleaseTask = {
     id: id("task"), regionId, title, objective: "recall", theme,
-    narrative: "由三月七从长期陪伴关系和玩家当前状态切入，以低打扰方式自然传递版本信息。",
-    timeWindow: textValue(content, ["发行时间", "时间窗口", "上线时间"]) || "按已审核区域方案执行",
+    narrative: parsed.narrative || "由三月七从长期陪伴关系和玩家当前状态切入，以低打扰方式自然传递版本信息。",
+    timeWindow: parsed.timeWindow || textValue(content, ["发行时间", "时间窗口", "上线时间"]) || "按已审核区域方案执行",
     consentConfirmed: true, facts, status: "ready",
     sourceDocument: { name: fileName, format: path.extname(fileName).slice(1).toLowerCase() || "md", importedAt, checksum: checksum(content), content, ...metadata },
     createdAt: importedAt, updatedAt: importedAt,
@@ -197,6 +281,7 @@ export async function importCharacterReleaseText(regionId: string, fileName: str
     if (declared && declared !== region.name) throw new Error(`方案区域“${declared}”与当前${region.name}工作区不匹配。`);
     const task = createImportedCharacterReleaseTask(regionId, fileName, content, metadata);
     workspace.tasks.unshift(task);
+    data.activeRegionId = regionId;
     audit(data, regionId, "task.imported", task.id, `${fileName} · ${task.sourceDocument?.checksum.slice(0, 12)}`);
     await writeSnapshot(data);
     return { data: clone(data), taskId: task.id, source: clone(task.sourceDocument) };
@@ -235,6 +320,11 @@ export async function publishCharacterRelease(regionId: string, taskId: string, 
     const percent = exampleMode ? 100 : Number(rolloutPercent);
     if (!Number.isFinite(percent) || percent < 1 || percent > 100) throw new Error("灰度比例必须在 1% 到 100% 之间。");
     if (task.status !== "ready") throw new Error("方案尚未满足发布条件。");
+    const fieldValidation = validatePlayerVisibleReleaseFields(task);
+    if (!fieldValidation.valid) {
+      const detail = fieldValidation.errors.map((item) => `${item.field}: ${item.reason}`).join("；");
+      throw new Error(`发行内容包含后台元数据，已阻止进入桌宠队列：${detail}`);
+    }
     const publishedAt = now();
     const deliveryId = id("delivery");
     const delivery = {

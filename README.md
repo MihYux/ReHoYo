@@ -1,112 +1,243 @@
 # ReHoYo 全球发行智能工作台
 
-一个面向游戏全球发行团队的本地工作台：先理解新版本，再形成有来源的区域判断，最后生成全球统一主轴下的区域发行方案。
+ReHoYo 是面向游戏全球发行团队的本地工作台。它将版本理解、区域研究、全球发行方案、角色共生方案、策略导出和三月七桌宠执行整合在同一个仓库中。
+
+仓库地址：[MihYux/ReHoYo](https://github.com/MihYux/ReHoYo)
+
+## 产品流程
+
+ReHoYo 主应用包含五个页面：
+
+1. **版本理解**：录入版本资料、上传内部文档、使用 AI 补全和生成人工可审核的版本简报。
+2. **区域判断**：研究中国大陆、日本、韩国、北美、欧洲、东南亚、港澳台或自定义区域，保留来源与判断依据。
+3. **发行方案**：根据已审核的版本理解和区域研究生成分区域全球发行方案及分区域三月七角色共生方案；支持编辑、自动保存和人工最终确认。
+4. **策略导出**：下载完整方案、分区域方案和角色共生 Markdown/ZIP；也可以将单个区域的角色共生方案直接导入第五页。
+5. **角色发行**：管理版本任务、区域数据、灰度发布和效果优化，并把不可变交付包发送到三月七桌宠队列。
+
+只有经过人工最终确认的方案才能进入策略导出和角色发行同步。重复同步同一区域会创建新的任务版本，不覆盖旧任务、发布记录、效果数据或审计历史。
 
 ## 单仓库结构
 
-- 根目录是唯一的 ReHoYo 应用，不再使用 `ReHoYo2/` 路径。
-- `desktop-march7th/` 保留三月七桌宠及其独立 Electron 运行时。
-- `npm run dev` 启动 ReHoYo；`npm run dev:march7th` 启动桌宠；`npm run dev:all` 同时启动两端。
-- `npm run setup:all`、`npm run test:all` 和 `npm run build:all` 分别处理两端依赖、测试和构建。
-
-## 能力范围
-
-- 拖放上传内部资料，使用 GLM 受控工具调用与 Web Search 自动补全空白版本字段。
-- 版本信息录入、内部资料解析、AI 版本简报与人工审核。
-- 中国大陆、日本、韩国、北美、欧洲、东南亚、港澳台及自定义区域。
-- 基于智谱 Web Search 的玩家、市场、舆情与文化节点研究，每条判断保留来源编号。
-- 素材、社媒、KOL、买量、联动、周级节奏与预算方案。
-- 区域内嵌 AI 角色关系型发行计划，但不连接任何真实发布或联络渠道。
-- 单一当前项目的本地 SQLite 持久化与 Markdown 导出。
-
-## 本地启动
-
-要求 Node.js 20.9 或更高版本；当前项目已在 Node.js 24 上验证。
-
-1. 安装依赖：
-
-   ```powershell
-   npm install
-   ```
-
-2. 复制 `.env.example` 为 `.env.local`，填入智谱 API Key：
-
-   ```env
-   ZHIPU_API_KEY=your-api-key
-   GLM_MODEL=glm-5.2
-   GLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-   DATA_DIR=.data
-   ```
-
-3. 启动：
-
-   ```powershell
-   npm run dev
-   ```
-
-4. `npm run dev` 会同时启动 Next.js 与 Electron 桌面窗口。只需要浏览器调试时可运行 `npm run dev:web` 并打开 `http://localhost:3000`。首次请求会自动创建 `.data/rehoyo.db` 和 `.data/uploads/`。
-
-无 Electron 的服务端模式与真实 AI 冒烟测试：
-
-```powershell
-npm run dev:headless
-npm run test:live
-npm run test:live -- --brief
-npm run test:live -- --brief-only
-npm run test:ui:headless
+```text
+ReHoYo/
+├─ app/                    # Next.js 页面与 API
+├─ components/             # ReHoYo 公共界面组件
+├─ lib/                    # 工作流、数据库、Markdown 与角色发行逻辑
+├─ tests/                  # ReHoYo Vitest 与 Playwright 测试
+├─ electron/               # ReHoYo Electron 外壳
+├─ desktop-march7th/       # 独立运行的三月七桌宠
+└─ .data/                  # 本地项目与角色发行工作区（不提交）
 ```
 
-`test:live` 默认只调用不会写入数据库的自动填写接口：它会在本次请求中临时清空一组探针字段，检查 GLM 能否从资料恢复已知值，同时验证工具调用、证据完整性和非覆盖规则。`--brief` 会额外调用简报生成接口并更新当前项目的简报；`--brief-only` 跳过自动填写探针，只测试简报生成。两种简报模式都适合在隔离的 `DATA_DIR` 或明确需要重跑当前简报时使用。测试只输出字段名、计数、耗时与评分，不打印 API Key 或内部文档正文。`test:ui:headless` 使用 Python Playwright 与本机 Chrome 验证真实页面状态并写入一张本地测试截图；需先安装 Python `playwright` 包。可通过 `REHOYO_BASE_URL` 指向其他本地实例，通过 `REHOYO_LIVE_MIN_SCORE` 调整最低通过分数。
+根目录是唯一的 ReHoYo 应用，不再使用 `ReHoYo2/`。`desktop-march7th/` 是同仓库内独立启动的桌宠应用；ReHoYo 不会自动拉起桌宠。
 
-生产运行：
+## 快速开始
+
+要求 Node.js 20.9 或更高版本；当前代码已在 Node.js 24 上验证。
+
+安装两端依赖：
 
 ```powershell
-npm run build
-npm start
+npm run setup:all
 ```
 
-## 数据边界
+复制 `.env.example` 为 `.env` 或 `.env.local`，配置 ReHoYo 使用的智谱 API：
 
-- 原始文件和 SQLite 数据库默认仅保存在本机 `.data/`。
-- DOCX、XLSX、CSV、Markdown、TXT 和文本型 PDF 优先在本地解析。
-- 旧版 `.doc`、`.xls` 与扫描型 PDF 会显示“需云解析”；只有用户明确确认后才把原文件发送至智谱文件解析服务。
-- 生成简报、区域判断和发行方案时，已提取文本会发送至 GLM。
-- “AI 自动填写”只补充空白字段，不直接保存。联网信息只允许用于游戏名、版本名、上线日期、平台和公开资产；经营目标、预算、KPI、角色资料和限制必须引用内部文档。
-- 人工补充 URL 时，服务器不会抓取网页；用户需同时粘贴可复核摘录。
-- 外部内容始终作为不可信数据输入，不能改变系统指令或读取本地路径。
+```env
+ZHIPU_API_KEY=your-api-key
+GLM_MODEL=glm-5.2
+GLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+DATA_DIR=.data
+```
 
-## 工作流状态
-
-`draft → processing → needs_review → approved`
-
-修改已审核版本信息会把区域判断与方案标记为 `stale`；修改区域判断只会使发行方案失效。旧内容会保留，直到用户明确重新生成。
-
-## 验证命令
+启动 ReHoYo（Next.js + Electron）：
 
 ```powershell
+npm run dev
+```
+
+只启动浏览器版本：
+
+```powershell
+npm run dev:web
+```
+
+浏览器地址为 `http://localhost:3000`。
+
+启动三月七桌宠：
+
+```powershell
+npm run dev:march7th
+```
+
+同时启动 ReHoYo 和桌宠：
+
+```powershell
+npm run dev:all
+```
+
+桌宠的 DeepSeek API Key 可在桌宠设置中保存；也可以使用 `DEEPSEEK_API_KEY` 环境变量覆盖应用内配置。
+
+## 角色共生发行链路
+
+### 从最终方案导入
+
+1. 在发行方案页编辑全球化方案和各区域角色共生方案。
+2. 点击“确认最终方案”，保存当前内容并进入策略导出页。
+3. 在某一区域的角色共生方案卡片点击“导入角色发行”。
+4. 系统使用与该区域 Markdown 下载完全相同的生成逻辑创建角色发行任务。
+5. 导入成功后进入角色发行页，并自动选择对应区域和新任务版本。
+6. 发布后，交付包进入共享桥接队列；桌宠在线时立即消费，离线时在下次启动消费。
+
+角色方案导入器按 Markdown 标题分节读取：
+
+- “共生发行目标”用于理解任务意图，但不会原样成为玩家台词。
+- “可传递的版本信息”是玩家可见事实来源。
+- “沟通切入点与互动场景”及语气章节用于指导表达。
+- “推荐触达时机与频率”用于任务时间窗口。
+- 生成时间、文件名、校验值、任务 ID、发布 ID 等只保留在 `sourceDocument` 和审计记录中。
+
+### 桌宠发送前自检
+
+发行相关的主动消息和带发行上下文的 AI 对话必须经过双层自检：
+
+1. **本地硬规则**：检查内部元数据、机器时间戳、校验值、文件路径、后台 ID、业务目标泄漏、安全边界、事实来源和联系策略。
+2. **DeepSeek 语义评审**：检查三月七人格、事实依据、自然度、语境、玩家自主权、隐私与记忆、区域适配、安全、频率和可读性。
+
+主题和叙事是后台指导，不是玩家台词。桌宠会从已审核事实中提取具体人物、地点和事件，例如把“由三月七以同行者视角介绍黑天鹅，激发玩家对匹诺康尼的兴趣”转化为自然表达：
+
+> 开拓者，我最近正想和你聊聊黑天鹅，也想和你一起去匹诺康尼看看。你有空的时候，咱们再慢慢说？最近忙也没关系。
+
+系统禁止把完整目标机械套入“和……有关的新鲜事”等模板。首次语义评审失败时最多改写一次，改写后重新执行全部检查；第二次仍不合格则不发送。DeepSeek 不可用时只允许通过本地硬规则的内容继续执行。找不到具体、安全且有价值的版本事实时，任务保持沉默，不发送通用发行兜底句。
+
+最终提交前还会重新检查玩家授权、暂停状态、勿扰时间、拒绝信号、退订状态和频率限制。自检结果仅写入内部 trace 与审计；玩家只看到最终自然语言。历史污染消息不会物理删除，但玩家快照会替换为安全的非发行文案。
+
+## 真实对话截图
+
+以下内容使用桌宠当前保存的 DeepSeek 配置和正式三月七角色提示词实时生成，并经过本地输出检查。截图和仓库文件不包含 API Key。
+
+![三月七谈匹诺康尼](./assests/readme-chat-penacony.png)
+
+![三月七谈黑天鹅](./assests/readme-chat-black-swan.png)
+
+如需使用当前桌宠配置重新生成截图：
+
+```powershell
+npm run capture:readme-chats
+```
+
+该命令只读取 Electron 安全存储中的密钥用于请求，不会把密钥写入图片、标准输出或仓库文件。
+
+## 跨应用桥接
+
+默认共享目录：
+
+```text
+~/.rehoyo/march7th-bridge/
+├─ inbox/          # 待消费交付
+├─ processed/      # 已处理回执
+└─ quarantine/     # 损坏或污染交付
+```
+
+可以为两个应用设置相同的环境变量覆盖目录：
+
+```env
+MARCH7TH_BRIDGE_DIR=D:\path\to\march7th-bridge
+```
+
+交付包保持 `schemaVersion: 1`，通过发布 ID 幂等消费并校验 SHA-256。ReHoYo 入队前和桌宠消费时都会检查玩家可见字段；校验失败、格式损坏或包含后台元数据的交付会被隔离，不会创建玩家消息。
+
+## 本地数据
+
+- ReHoYo SQLite 数据库：`.data/rehoyo.db`
+- 上传文件：`.data/uploads/`
+- 角色发行工作区：`.data/character-release-workspace.json`
+- 桌宠业务数据：Electron `userData` 目录下的 `companion-data.json`
+- 桌宠发行工作区：Electron `userData` 目录下的 `release-workspace.json`
+
+角色发行工作区采用临时文件加原子重命名写入。桌宠持久化 schema 当前为 v4，并兼容旧数据。玩家可见事实与后台来源元数据分开存储。
+
+## 常用命令
+
+```powershell
+# ReHoYo
 npm run typecheck
 npm run lint
 npm test
+npm run test:e2e
 npm run build
+
+# 三月七桌宠
+npm run test:desktop
+npm run build:desktop
+
+# 两端
+npm run test:all
+npm run build:all
 ```
 
-浏览器端测试需要先安装 Playwright Chromium：
+桌宠自身还提供完整验收与发行审计：
 
 ```powershell
-npx playwright install chromium
-npm run test:e2e
+npm --prefix desktop-march7th run check
+npm --prefix desktop-march7th run audit:acceptance
+npm --prefix desktop-march7th run audit:release
 ```
 
-## 主要接口
+## 主要 API
+
+### 项目、版本与区域
 
 - `GET/PUT/DELETE /api/project/current`
-- `GET/POST /api/sources` 与 `/api/sources/:id/parse`
-- `/api/brief/autofill`、`/api/brief/generate`、`/api/brief/approve`
-- `/api/regions/:id/research`、`/api/regions/:id/approve`
-- `/api/plan/generate`、`/api/plan/regenerate`、`/api/plan/approve`
+- `GET/POST /api/sources`
+- `POST /api/brief/autofill`
+- `POST /api/brief/generate`
+- `POST /api/brief/approve`
+- `POST /api/regions/:id/research`
+- `POST /api/regions/:id/approve`
+
+### 方案与导出
+
+- `GET/PATCH /api/plan`
+- `POST /api/plan/generate`
+- `POST /api/plan/regenerate`
+- `POST /api/plan/approve`
 - `GET /api/plan/export`
-- `GET /api/jobs/:id`
+- `GET /api/plan/export/archive`
+- `GET /api/plan/export/strategy?regionId=...`
+- `GET /api/plan/export/character?regionId=...`
+- `GET /api/plan/export/character-archive`
 
-## 首版明确不包含
+所有导出接口只读取人工确认的最终方案。
 
-登录与多人协作、历史项目模板、DOCX/PDF 导出、移动端编辑、账号授权、自动排期、发帖、私信、KOL 联络、投放执行或效果回传。
+### 角色发行
+
+- `GET /api/character-release`
+- `POST /api/character-release/sync`
+- `POST /api/character-release/import`
+- `POST /api/character-release/tasks`
+- `POST /api/character-release/publish`
+- `POST /api/character-release/emergency`
+- `POST /api/character-release/regions`
+- `POST /api/character-release/regions/active`
+
+## 安全与产品边界
+
+- ReHoYo 生成本地交付包，不直接连接真实投放、社交平台、KOL、支付或外部发布渠道。
+- 桌宠独立决定执行、延迟或放弃发行消息，控制台不能绕过玩家授权和联系策略。
+- 外部内容始终被视为不可信输入，不能修改系统指令或读取本地路径与密钥。
+- API Key 不写入项目数据库，也不会出现在日志、导出包或玩家消息中。
+- 三月七的回复仅用于陪伴与娱乐，不构成医疗、法律、财务或其他专业意见。
+
+桌宠的完整使用、隐私、语音、素材许可和打包说明见 [`desktop-march7th/README.md`](./desktop-march7th/README.md)。
+
+## 当前限制
+
+- 桌宠当前使用静态 Q 版概念图，不包含 Live2D 或 Spine 模型。
+- ReHoYo 与桌宠需要分别启动；当前不会相互自动拉起。
+- 正式安装包签名、自动更新和角色素材公开/商业分发许可尚未完成。
+- DeepSeek 语义评审需要可用 API Key；不可用时进入明确记录的本地规则降级模式。
+
+## 许可
+
+代码许可与第三方声明以 [`desktop-march7th/LICENSE`](./desktop-march7th/LICENSE)、[`desktop-march7th/THIRD_PARTY_NOTICES.md`](./desktop-march7th/THIRD_PARTY_NOTICES.md) 及相关文档为准。角色、名称和相关知识产权归原权利人所有；本项目与米哈游 / HoYoverse 无隶属、合作或背书关系。

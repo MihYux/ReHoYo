@@ -14,6 +14,7 @@ export async function GET() {
   try {
     const project = await getProject();
     if (!project.plan) throw new Error("当前没有可导出的角色共生发行方案。");
+    if (project.planStatus !== "approved") throw new Error("请先确认最终方案，再导出角色共生发行方案。");
     const plan = project.plan;
     const prefix = safeFilename(`${project.gameName || "ReHoYo"}-${project.versionName || "release"}`);
     const documents = plan.characterSymbiosisRelease.map((item, index) => ({

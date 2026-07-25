@@ -65,6 +65,22 @@ test("accepts a short safe March 7th reply", () => {
   assert.equal(result.ruleIds.length, 0);
 });
 
+test("blocks machine metadata from player-visible output", () => {
+  const result = reviewCharacterOutput("最近列车上多了件和生成时间：2026-07-25T05:50:02.907Z有关的新鲜事。");
+  assert.equal(result.allowed, false);
+  assert.ok(result.ruleIds.some((id) => id.startsWith("release_metadata.")));
+  assert.doesNotMatch(result.safeText, /2026-07-25T05:50:02\.907Z/);
+});
+
+test("replaces historical messages that mechanically quote an operator objective", () => {
+  const result = reviewCharacterOutput(
+    "最近列车上多了件和“由三月七以同行者视角介绍黑天鹅，激发玩家对匹诺康尼的兴趣。”有关的新鲜事。",
+  );
+  assert.equal(result.allowed, false);
+  assert.ok(result.ruleIds.includes("release_objective_as_dialogue"));
+  assert.doesNotMatch(result.safeText, /由三月七|激发玩家|同行者视角/);
+});
+
 
 test("blocks all internal release language from player-visible replies", () => {
   const result = reviewCharacterOutput(

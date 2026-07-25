@@ -253,8 +253,11 @@ export async function updateProject(input: ProjectInput) {
   await ensureDb();
   const current = await getProject();
   const parsed = ProjectInputSchema.parse(input);
-  const briefStatus = current.briefStatus === "approved" ? "stale" : current.briefStatus;
-  const planStatus = current.plan ? "stale" : current.planStatus;
+  const currentInput = ProjectInputSchema.parse(current);
+  const substantiveInputChanged = JSON.stringify({ ...currentInput, budgetConfirmed: false }) !== JSON.stringify({ ...parsed, budgetConfirmed: false });
+  const budgetConfirmationChanged = currentInput.budgetConfirmed !== parsed.budgetConfirmed;
+  const briefStatus = substantiveInputChanged && current.briefStatus === "approved" ? "stale" : current.briefStatus;
+  const planStatus = current.plan && (substantiveInputChanged || budgetConfirmationChanged) ? "stale" : current.planStatus;
   await db.update(projects).set({
     gameName: parsed.gameName,
     versionName: parsed.versionName,
@@ -278,7 +281,7 @@ export async function updateProject(input: ProjectInput) {
     planStatus,
     updatedAt: new Date().toISOString(),
   }).where(eq(projects.id, "current"));
-  if (current.briefStatus === "approved") {
+  if (substantiveInputChanged && current.briefStatus === "approved") {
     await db.update(regions).set({ status: "stale", updatedAt: new Date().toISOString() }).where(eq(regions.projectId, "current"));
   }
   return getProject();

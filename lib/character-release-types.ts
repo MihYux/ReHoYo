@@ -21,6 +21,7 @@ export interface CharacterReleaseTask {
   narrative: string;
   timeWindow: string;
   consentConfirmed: boolean;
+  /** Player-visible, verified version facts only. Import metadata belongs in sourceDocument. */
   facts: Array<{ id: string; label: string; value: string; source: string }>;
   status: "draft" | "ready";
   sourceDocument?: {
@@ -67,4 +68,3 @@ export interface CharacterReleaseSnapshot {
 export type CharacterReleaseTaskInput = Pick<CharacterReleaseTask,
   "title" | "objective" | "theme" | "narrative" | "timeWindow" | "consentConfirmed" | "facts"
 > & { id?: string };
-

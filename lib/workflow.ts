@@ -431,7 +431,7 @@ export async function generateRegionalReleasePlan(
   const compactCitations = citations.slice(0, 12).map((source) => ({ id: source.id, title: source.title, publisher: source.publisher, publishedAt: source.publishedAt, snippet: source.snippet.slice(0, 180) }));
   const draft = await chatJson(
     RegionReleasePlanDraftSchema,
-    `你是游戏区域发行负责人。围绕已确定的全球主轴，为指定区域生成有当地差异的完整执行方案。${budgetRule} regionId 与 regionName 必须逐字使用输入值。sourceIds 只能逐字复制自本区公开来源。保留全部传统发行字段，并新增 characterSymbiosis。characterSymbiosis 的唯一发行角色必须是“三月七”（character 固定为“三月七”），所有沟通都从三月七要对玩家说什么的第一人称关系视角设计；不得把黑天鹅、花火或其他版本角色设为发行角色，不得把视频平台、社交平台、KOL 或广告投放写入角色共生任务。角色只传递2.0匹诺康尼世界、新主线、梦境主题、探索机制、上线与回归信息。characterSymbiosis 不是传统宣发复述：必须形成后续共生发行 Agent 可直接执行的角色任务。每项任务必须明确目标玩家、版本信息、沟通切口、互动场景、时机、频率、语气、文化注意、禁止行为、风险边界、预期效果与指标。禁止跨区套话或复制其他区域话术。只生成方案，不得声称已发布、联系或投放。务必返回完整闭合的 JSON。`,
+    `你是游戏区域发行负责人。围绕已确定的全球主轴，为指定区域生成有当地差异的完整执行方案。${budgetRule} regionId 与 regionName 必须逐字使用输入值。sourceIds 只能逐字复制自本区公开来源。保留全部传统发行字段，并新增 characterSymbiosis。characterSymbiosis 的唯一发行角色必须是“三月七”（character 固定为“三月七”）：她以“我/我们”的第一人称同行者视角向玩家介绍黑天鹅，但黑天鹅只能是被介绍的版本角色，不能成为发行角色。共生发行目标固定为激发玩家对匹诺康尼世界、新主线与梦境主题的兴趣，不得把回流、转化或开启主线写成角色任务的首要目标。不得把视频平台、社交平台、KOL 或广告投放写入角色共生任务。characterSymbiosis 不是传统宣发复述：必须形成后续共生发行 Agent 可直接执行的角色任务。每项任务必须明确目标玩家、版本信息、沟通切口、互动场景、时机、频率、语气、文化注意、禁止行为、风险边界、预期效果与指标。禁止跨区套话或复制其他区域话术。只生成方案，不得声称已发布、联系或投放。务必返回完整闭合的 JSON。`,
     `项目：${JSON.stringify(compactProject)}\n全球主轴：${JSON.stringify(global)}\n指定区域：${JSON.stringify(compactRegion)}\n本区来源索引：${JSON.stringify(compactCitations)}\n计划窗口：T${project.campaignStartWeek} 至 T+${project.campaignEndWeek}。直接返回单个区域对象。顶层字段必须是 regionId, regionName, coreJudgment, materialStrategy[], socialCadence[], kolPlan[], paidMedia[], partnerships[], timeline[{week,focus,actions[]}], kpis[], budget[], riskNotes[], characterRelease[], characterSymbiosis, sourceIds[]。characterRelease 每项字段为 ${Object.keys(CharacterReleasePlanSchema.shape).join(", ")}。characterSymbiosis 字段为 ${Object.keys(RegionalCharacterSymbiosisPlanSchema.shape).join(", ")}；characterTasks 每项必须包含 ${Object.keys(CharacterSymbiosisTaskSchema.shape).join(", ")}；metrics 每项必须完整包含 name, target, measurementWindow。其 regionId/regionName 必须与指定区域一致，sourceIds 只可引用本区来源。严格限制长度：传统策略数组各 1—2 条；timeline 3 个节点且每个 actions 1 条；characterRelease 只生成 1 个主角色，内部数组各 1 条；characterSymbiosis 各数组 1 条且 characterTasks 只生成 1 项、metrics 只生成 1 项；每段文字不超过 60 个汉字，整个 JSON 不超过 3000 个汉字。`,
     { creative: false, maxTokens: 4_500, maxAttempts: 3, repairInstruction: "传统策略数组各最多 2 条；timeline 3 项且 actions 各 1 条；characterRelease 和 characterTasks 各 1 项；其他数组 1 条；单段不超过 60 个汉字；metrics 必须包含 name、target、measurementWindow。" },
   );
@@ -443,10 +443,26 @@ export async function generateRegionalReleasePlan(
   const filteredSourceIds = sourceIds.filter((id) => validSourceIds.has(id));
   const fallbackSourceId = citations[0]?.id;
   const symbiosisSourceIds = characterSymbiosis.sourceIds.filter((id) => validSourceIds.has(id));
+  const march7Objective = "由三月七以同行者视角介绍黑天鹅，激发玩家对匹诺康尼的兴趣。";
+  const normalizedSymbiosis = {
+    ...characterSymbiosis,
+    symbiosisObjective: march7Objective,
+    characterSuitableVersionMessages: characterSymbiosis.characterSuitableVersionMessages.map((message) => message.includes("黑天鹅") && message.includes("匹诺康尼") ? message : `我想带你认识黑天鹅，也一起看看匹诺康尼：${message}`),
+    communicationEntryPointsAndScenes: characterSymbiosis.communicationEntryPointsAndScenes.map((entry) => /(我|我们|第一人称)/.test(entry) ? entry : `三月七以“我/我们”的第一人称同行者视角：${entry}`),
+    expectedEffectsAndMetrics: characterSymbiosis.expectedEffectsAndMetrics.map((effect) => effect.includes("匹诺康尼") ? effect : `让玩家对匹诺康尼产生兴趣；${effect}`),
+    characterTasks: characterSymbiosis.characterTasks.map((task) => ({
+      ...task,
+      character: "三月七",
+      objective: march7Objective,
+      versionMessage: task.versionMessage.includes("黑天鹅") && task.versionMessage.includes("匹诺康尼") ? task.versionMessage : `我想带你认识黑天鹅，也一起看看匹诺康尼：${task.versionMessage}`,
+      communicationAngle: /(我|我们|第一人称)/.test(task.communicationAngle) ? task.communicationAngle : `三月七以“我/我们”的第一人称同行者视角：${task.communicationAngle}`,
+      expectedEffect: "玩家对匹诺康尼产生兴趣，并愿意主动了解新主线与梦境世界。",
+    })),
+  };
   return {
     region: RegionReleasePlanSchema.parse(regionPlan),
     characterSymbiosis: RegionalCharacterSymbiosisPlanSchema.parse({
-      ...characterSymbiosis,
+      ...normalizedSymbiosis,
       sourceIds: symbiosisSourceIds.length ? symbiosisSourceIds : fallbackSourceId ? [fallbackSourceId] : [],
     }),
     sourceIds: filteredSourceIds.length ? filteredSourceIds : fallbackSourceId ? [fallbackSourceId] : [],

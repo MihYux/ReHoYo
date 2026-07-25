@@ -30,6 +30,10 @@ const {
 const { CompanionStore } = require("./companion-store.cjs");
 const { ReleaseSkillLoader } = require("./release-skill-loader.cjs");
 const { ReleaseBridgeConsumer } = require("./release-bridge.cjs");
+const {
+  SAFE_NON_RELEASE_TEXT,
+  runReleaseMessagePreflight,
+} = require("./release-message-preflight.cjs");
 const { ReleaseWorkspaceStore } = require("./release-workspace-store.cjs");
 const {
   ServiceBudgetStore,
@@ -396,6 +400,32 @@ function messageCharacterCount(messages) {
   );
 }
 
+async function reviewReleaseMessage(prepared) {
+  const settings = aiSettingsStore.getPublicSettings();
+  const requestReview = settings.hasApiKey
+    ? async ({ systemPrompt, payload }) => {
+        const serialized = JSON.stringify(payload);
+        serviceBudgetStore.authorize("deepseek", { characters: serialized.length });
+        try {
+          const response = await requestDeepSeekChat({
+            apiKey: aiSettingsStore.getApiKey(),
+            model: settings.model,
+            thinking: false,
+            messages: [{ role: "user", content: serialized }],
+            systemPrompt,
+            timeoutMs: 20_000,
+          });
+          serviceBudgetStore.recordSuccess("deepseek");
+          return response;
+        } catch (error) {
+          serviceBudgetStore.recordFailure("deepseek", error?.code);
+          throw error;
+        }
+      }
+    : undefined;
+  return runReleaseMessagePreflight({ ...prepared, requestReview });
+}
+
 function registerServiceHandlers() {
   ipcMain.handle("service:get-usage-status", () =>
     serviceBudgetStore.getPublicStatus(),
@@ -549,10 +579,19 @@ function registerAiHandlers() {
       });
       serviceBudgetStore.recordSuccess("deepseek");
       const outputSafety = reviewCharacterOutput(result.content);
+      const releasePreflight = activeRelease
+        ? await reviewReleaseMessage({
+            text: outputSafety.safeText,
+            plan: activeRelease.plan,
+            context: { contactAllowed: true, memoryUsed: relevantMemory.durable.length > 0 },
+          })
+        : null;
       return {
         ok: true,
         ...result,
-        content: outputSafety.safeText,
+        content: releasePreflight
+          ? (releasePreflight.decision === "execute" ? releasePreflight.finalText : SAFE_NON_RELEASE_TEXT)
+          : outputSafety.safeText,
         safety: {
           filtered: !outputSafety.allowed,
           ruleIds: outputSafety.ruleIds,
@@ -718,7 +757,7 @@ function registerReleaseWorkspaceHandlers() {
     releaseWorkspaceStore.publishToAgents(
       payload?.regionId, payload?.directiveId, payload?.experimentId,
     ));
-  const deliverPublishedPlanToCompanion = (
+  const deliverPublishedPlanToCompanion = async (
     releaseSnapshot,
     regionId,
     taskId,
@@ -735,7 +774,7 @@ function registerReleaseWorkspaceHandlers() {
       companionStore.reloadFromDisk();
       const before = companionStore.getSnapshot();
       const beforeReleaseId = latestRegionalReleaseMessage(before)?.id;
-      const companionData = companionStore.receiveRegionalReleasePlan({
+      const deliveryInput = {
         sourceId: planRelease.id,
         taskId: planRelease.taskId,
         regionId: planRelease.regionId,
@@ -744,7 +783,10 @@ function registerReleaseWorkspaceHandlers() {
         plan: bundle.payload.plan,
         source: bundle.payload.source,
         exampleMode,
-      });
+      };
+      const prepared = companionStore.prepareRegionalReleaseMessage(deliveryInput);
+      const preflight = await reviewReleaseMessage(prepared);
+      const companionData = companionStore.receiveRegionalReleasePlan(deliveryInput, preflight);
       notifyCompanionDataChanged(companionData);
       const nextRelease = latestRegionalReleaseMessage(companionData);
       if (nextRelease && nextRelease.id !== beforeReleaseId) {
@@ -753,7 +795,7 @@ function registerReleaseWorkspaceHandlers() {
     }
     return releaseSnapshot;
   };
-  ipcMain.handle("release:publish-plan-to-agents", (_event, payload) => {
+  ipcMain.handle("release:publish-plan-to-agents", async (_event, payload) => {
     const releaseSnapshot = releaseWorkspaceStore.publishPlanToAgents(
       payload?.regionId,
       payload?.taskId,
@@ -766,7 +808,7 @@ function registerReleaseWorkspaceHandlers() {
       false,
     );
   });
-  ipcMain.handle("release:publish-example-plan", (_event, payload) => {
+  ipcMain.handle("release:publish-example-plan", async (_event, payload) => {
     const releaseSnapshot = releaseWorkspaceStore.publishPlanToAgents(
       payload?.regionId,
       payload?.taskId,
@@ -1946,7 +1988,7 @@ app.whenReady().then(() => {
         companionStore.reloadFromDisk();
         const before = companionStore.getSnapshot();
         const beforeReleaseId = latestRegionalReleaseMessage(before)?.id;
-        const next = companionStore.receiveRegionalReleasePlan({
+        const deliveryInput = {
           sourceId: delivery.sourceId,
           taskId: delivery.taskId,
           regionId: delivery.regionId,
@@ -1955,7 +1997,10 @@ app.whenReady().then(() => {
           plan: delivery.plan,
           source: delivery.source,
           exampleMode: delivery.exampleMode,
-        });
+        };
+        const prepared = companionStore.prepareRegionalReleaseMessage(deliveryInput);
+        const preflight = await reviewReleaseMessage(prepared);
+        const next = companionStore.receiveRegionalReleasePlan(deliveryInput, preflight);
         notifyCompanionDataChanged(next);
         const nextRelease = latestRegionalReleaseMessage(next);
         if (nextRelease && nextRelease.id !== beforeReleaseId) showPetWindow();

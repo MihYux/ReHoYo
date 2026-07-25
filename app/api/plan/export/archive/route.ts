@@ -14,6 +14,7 @@ export async function GET() {
   try {
     const [project, citations] = await Promise.all([getProject(), getCitations()]);
     if (!project.plan) throw new Error("当前没有可打包的发行策略。");
+    if (project.planStatus !== "approved") throw new Error("请先确认最终方案，再下载发行策略包。");
     const prefix = safeFilename(`${project.gameName || "ReHoYo"}-${project.versionName || "release"}`);
     const documents = [
       { name: `00-${prefix}-完整发行策略.md`, content: planToMarkdown(project, project.plan, citations) },

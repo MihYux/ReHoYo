@@ -12,21 +12,15 @@ const item: RegionalCharacterSymbiosisPlan = {
 };
 
 describe("character symbiosis Markdown export", () => {
-  it("locks every region to the same six-section structure and list sizes", () => {
+  it("exports the current regional plan instead of a fixed demonstration template", () => {
     const project = { gameName: "崩坏：星穹铁道", versionName: "2.0", launchDate: "2024-02-06" } as ProjectSnapshot;
     const plan = { generatedAt: "2024-01-12", regions: [{ regionId: "region-jp", regionName: "日本", materialStrategy: ["角色短片"], characterRelease: [{ audienceSegment: "剧情玩家" }] }], characterSymbiosisRelease: [item] } as ReleasePlan;
     const output = characterSymbiosisToMarkdown(project, plan, item);
-    const bullets = (start: string, end: string) => output.match(new RegExp(`${start}\\s*([\\s\\S]*?)\\s*${end}`))?.[1].match(/^- /gm)?.length;
-    expect(output.match(/^### [1-6]\./gm)).toHaveLength(6);
-    expect(bullets("### 2\\. 目标玩家群体", "### 3\\.")).toBe(3);
-    expect(bullets("### 3\\. 可传递的版本信息", "### 4\\.")).toBe(4);
-    expect(bullets("推荐场景：", "### 5\\.")).toBe(4);
-    const payload = JSON.parse(output.match(/```json\s*([\s\S]*?)\s*```/)?.[1] || "{}");
-    expect(payload.memory_requirements).toHaveLength(3);
-    expect(payload.risk_rules).toHaveLength(4);
-    expect(payload.character).toBe("March 7th");
-    expect(output).not.toMatch(/黑天鹅|花火|YouTube|B站|抖音|Facebook/);
-    expect(output).toContain("我已经准备好相机了");
-    expect(output).toContain("### 6. 对话示例");
+    expect(output).toContain(item.symbiosisObjective);
+    expect(output).toContain(item.targetPlayerGroups[0]);
+    expect(output).toContain(item.characterTasks[0].communicationAngle);
+    expect(output).toContain("回流率=+5%（7天）");
+    expect(output).toContain(item.regionalStrategyLinks[0]);
+    expect(output).not.toContain("我已经准备好相机了");
   });
 });
