@@ -13,6 +13,10 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const APP_ICON = path.join(
+  __dirname,
+  process.platform === "win32" ? "app-icon.ico" : "app-icon.png",
+);
 const ttsConfig = require("../shared/cosyvoice-config.json");
 const march7thSkillProfile = require("../shared/march7th-skill-profile.json");
 const promptConfig = require("../shared/march7th-prompt.json");
@@ -1397,6 +1401,7 @@ function createPetWindow() {
     maximizable: false,
     backgroundColor: "#00000000",
     show: false,
+    icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -1644,6 +1649,9 @@ ipcMain.on("window:renderer-heartbeat", (event) => {
 });
 
 app.whenReady().then(() => {
+  if (process.platform === "darwin" && app.dock && fs.existsSync(APP_ICON)) {
+    app.dock.setIcon(APP_ICON);
+  }
   const windowStatePath = path.join(
     app.getPath("userData"),
     "window-state.json",

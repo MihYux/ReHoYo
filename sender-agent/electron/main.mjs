@@ -126,6 +126,7 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   try {
+    if (process.platform === "darwin" && app.dock) app.dock.setIcon(APP_ICON);
     if (app.isPackaged) await startPackagedServer();
     createWindow();
   } catch (error) {
