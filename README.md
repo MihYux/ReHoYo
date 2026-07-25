@@ -2,6 +2,13 @@
 
 一个面向游戏全球发行团队的本地工作台：先理解新版本，再形成有来源的区域判断，最后生成全球统一主轴下的区域发行方案。
 
+## 单仓库结构
+
+- 根目录是唯一的 ReHoYo 应用，不再使用 `ReHoYo2/` 路径。
+- `desktop-march7th/` 保留三月七桌宠及其独立 Electron 运行时。
+- `npm run dev` 启动 ReHoYo；`npm run dev:march7th` 启动桌宠；`npm run dev:all` 同时启动两端。
+- `npm run setup:all`、`npm run test:all` 和 `npm run build:all` 分别处理两端依赖、测试和构建。
+
 ## 能力范围
 
 - 拖放上传内部资料，使用 GLM 受控工具调用与 Web Search 自动补全空白版本字段。
