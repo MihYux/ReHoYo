@@ -152,7 +152,7 @@ ReHoYo 由“发行方案agent”和“角色共生式发行系统”两部分�
 
 ### 5. [Hardware Pi 网页部署](hardware-pi/README.md)
 
-[进入项目目录](./hardware-pi/) · [阅读部署说明](hardware-pi/README.md)
+https://github.com/MihYux/hardware-pi
 
 Orange Pi 子模块，保留全球发行工作台和三月七网页端，移除 Electron 透明窗口、托盘和桌面安装能力。模型密钥统一保存在 Pi，通过浏览器提供桌宠、工作台与控制面板。
 
